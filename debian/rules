@@ -1,0 +1,51 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+
+export DH_VIRTUALENV_INSTALL_ROOT=/opt
+
+PACKAGE=$(shell dh_listpackages)
+SNAKE=/usr/bin/python3
+DH_VENV_DIR=debian/$(PACKAGE)$(DH_VIRTUALENV_INSTALL_ROOT)/$(PACKAGE)
+
+%:
+	dh $@ --with python-virtualenv
+
+.PHONY: override_dh_installsystemd override_dh_strip override_dh_dwz override_dh_lintian override_dh_virtualenv
+
+override_dh_installsystemd:
+	dh_installsystemd wlanpi-mcp.service
+
+override_dh_strip:
+	@echo "Skipping dh strip"
+
+override_dh_dwz:
+	@echo "Skipping dwz"
+
+override_dh_lintian:
+	@echo "Skipping lintian checks"
+
+override_dh_virtualenv:
+	dh_virtualenv \
+		--install-suffix "wlanpi-mcp" \
+		--builtin-venv \
+		--python ${SNAKE} \
+		--upgrade-pip-to=24.3.1 \
+		--preinstall="setuptools>=68" \
+		--preinstall="wheel>=0.43" \
+		--extra-pip-arg "--no-cache-dir" \
+		--extra-pip-arg "--no-compile"
+
+	@echo "BYTECODE CLEANUP:"
+	find $(DH_VENV_DIR)/lib -type d -name "__pycache__" -exec rm -rf {} + -print 2>/dev/null || true
+	find $(DH_VENV_DIR)/lib -name "*.pyc" -delete -print
+	find $(DH_VENV_DIR)/lib -name "*.pyo" -delete -print
+
+	rm -rfv $(DH_VENV_DIR)/bin/pip*
+	rm -rfv $(DH_VENV_DIR)/bin/easy_install*
+	rm -rfv $(DH_VENV_DIR)/bin/wheel
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/pip
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/setuptools
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/wheel
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/_distutils_hack
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/distutils-precedence.pth
+	rm -rfv $(DH_VENV_DIR)/lib/python*/site-packages/*.dist-info

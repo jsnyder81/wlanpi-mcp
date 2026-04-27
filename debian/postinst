@@ -1,0 +1,49 @@
+#!/bin/sh
+set -e
+
+CONFIG_DIR=/etc/wlanpi-mcp
+CONFIG_FILE=$CONFIG_DIR/config.env
+
+case "$1" in
+    configure)
+        # Create config directory if needed
+        mkdir -p "$CONFIG_DIR"
+
+        # Generate API key on first install
+        if [ ! -f "$CONFIG_FILE" ]; then
+            API_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+            cat > "$CONFIG_FILE" <<EOF
+WLANPI_CORE_URL=http://localhost:31415
+WLANPI_CORE_SECRET_PATH=/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin
+WLANPI_CORE_DEVICE_ID=wlanpi-mcp
+WLANPI_MCP_API_KEY=${API_KEY}
+WLANPI_MCP_HOST=0.0.0.0
+WLANPI_MCP_PORT=8765
+LOG_LEVEL=INFO
+EOF
+            echo ""
+            echo "============================================================"
+            echo "  WlanPi MCP Server installed"
+            echo "  API key for SSE clients:"
+            echo "  ${API_KEY}"
+            echo "  Stored in: ${CONFIG_FILE}"
+            echo "============================================================"
+            echo ""
+        fi
+
+        chmod 640 "$CONFIG_FILE"
+        chown root:wlanpi "$CONFIG_FILE" 2>/dev/null || true
+    ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

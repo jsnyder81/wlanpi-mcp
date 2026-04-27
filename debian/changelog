@@ -1,0 +1,13 @@
+wlanpi-mcp (0.1.0) unstable; urgency=medium
+
+  * Initial release — Phase 1 MVP
+  * Read tools: device info/stats, network interfaces, network info,
+    service status, reachability, USB interfaces, UFW status
+  * Write tools: service start/stop (allowlisted services only)
+  * MCP resources: device://info, device://stats, network://interfaces,
+    network://info, services://status/{name}
+  * MCP prompts: diagnose_connectivity, troubleshoot_service,
+    health_check, service_manager
+  * Supports stdio and SSE transports
+
+ -- WLAN Pi Developers <developers@wlanpi.com>  Sat, 26 Apr 2025 00:00:00 +0000

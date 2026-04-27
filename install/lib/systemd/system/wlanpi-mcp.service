@@ -1,0 +1,18 @@
+[Unit]
+Description=WlanPi MCP Server
+Wants=wlanpi-core.service
+After=network.target wlanpi-core.service
+
+[Service]
+Type=simple
+User=wlanpi
+Group=wlanpi
+EnvironmentFile=/etc/wlanpi-mcp/config.env
+ExecStart=/opt/wlanpi-mcp/bin/python -m wlanpi_mcp --transport sse
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
