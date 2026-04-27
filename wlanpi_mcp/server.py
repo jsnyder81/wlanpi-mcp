@@ -4,6 +4,7 @@ from wlanpi_mcp.client.core_client import CoreClient
 from wlanpi_mcp.prompts import diagnostics
 from wlanpi_mcp.resources import (
     bluetooth as bt_res,
+    capture as capture_res,
     device,
     mode as mode_res,
     netconfig as netconfig_res,
@@ -65,6 +66,7 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8765) -
 
     # Resources — Phase 3
     mode_res.register(mcp, client)
+    capture_res.register(mcp, client)
 
     # Prompts
     diagnostics.register(mcp)
