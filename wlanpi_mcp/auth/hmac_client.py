@@ -2,22 +2,31 @@ import hashlib
 import hmac
 import json
 from pathlib import Path
+from urllib.parse import urlencode
 
 
 AUTH_ENDPOINT = "/api/v1/auth/token"
 
 
-def generate_signature(secret_path: str, device_id: str) -> tuple[str, str]:
+def sign_request(
+    secret_path: str,
+    method: str,
+    path: str,
+    query_string: str = "",
+    body: str = "",
+) -> str:
     """
-    Returns (request_body_json, hmac_signature) for the auth token endpoint.
-    Canonical string format mirrors wlanpi_core/cli/getjwt.py exactly.
+    Generate HMAC-SHA256 signature for a wlanpi-core localhost API request.
+    Canonical string mirrors wlanpi_core/core/auth.py verify_hmac exactly:
+      METHOD\nPATH\nQUERY_STRING\nBODY
     """
-    request_body = json.dumps({"device_id": device_id})
-    canonical_string = f"POST\n{AUTH_ENDPOINT}\n\n{request_body}"
-
+    canonical = f"{method}\n{path}\n{query_string}\n{body}"
     secret = Path(secret_path).read_bytes()
-    signature = hmac.new(
-        secret, canonical_string.encode(), hashlib.sha256
-    ).hexdigest()
+    return hmac.new(secret, canonical.encode(), hashlib.sha256).hexdigest()
 
-    return request_body, signature
+
+def generate_signature(secret_path: str, device_id: str) -> tuple[str, str]:
+    """Legacy helper kept for reference — not used by CoreClient."""
+    request_body = json.dumps({"device_id": device_id})
+    sig = sign_request(secret_path, "POST", AUTH_ENDPOINT, "", request_body)
+    return request_body, sig
