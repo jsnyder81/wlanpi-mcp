@@ -1,35 +1,28 @@
 import pytest
-import respx
-import httpx
 
+from wlanpi_mcp.auth.token_context import current_token
+from wlanpi_mcp.client.core_client import CoreClient
 from wlanpi_mcp.config import Settings
+
+FAKE_TOKEN = "fake.jwt.token"
 
 
 @pytest.fixture
 def settings():
     return Settings(
         WLANPI_CORE_URL="http://localhost:31415",
-        WLANPI_CORE_SECRET_PATH="/tmp/fake_secret.bin",
-        WLANPI_CORE_DEVICE_ID="test-device",
-        WLANPI_MCP_API_KEY="test-key",
+        _env_file=None,
     )
 
 
 @pytest.fixture
-def mock_token(tmp_path):
-    """Provides a TokenManager pre-loaded with a fake token so tests skip HMAC bootstrap."""
-    import time
-    from unittest.mock import AsyncMock, patch
-    from wlanpi_mcp.auth.token_manager import TokenManager
+def bearer_token():
+    """Simulates BearerTokenMiddleware having captured a client JWT."""
+    ctx = current_token.set(FAKE_TOKEN)
+    yield FAKE_TOKEN
+    current_token.reset(ctx)
 
-    manager = TokenManager.__new__(TokenManager)
-    manager._token = "fake.jwt.token"
-    manager._expires_at = time.time() + 86400 * 7
-    import asyncio
-    manager._lock = asyncio.Lock()
 
-    async def _get_token():
-        return manager._token
-
-    with patch.object(manager, "get_token", side_effect=_get_token):
-        yield manager
+@pytest.fixture
+def client(settings, bearer_token):
+    return CoreClient(settings)

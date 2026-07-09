@@ -2,74 +2,51 @@ import pytest
 import respx
 import httpx
 
-from wlanpi_mcp.client.core_client import CoreClient
 from wlanpi_mcp.config import Settings
-
-
-@pytest.fixture
-def client(settings, mock_token):
-    c = CoreClient.__new__(CoreClient)
-    c._settings = settings
-    c._token_manager = mock_token
-    c._http = httpx.AsyncClient(base_url=settings.WLANPI_CORE_URL)
-    return c
 
 
 # ── WLAN ─────────────────────────────────────────────────────────────────────
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_wlan(client):
-    respx.get("http://localhost:31415/api/v1/network/wlan/scan").mock(
-        return_value=httpx.Response(200, json={"nets": [{"ssid": "TestNet", "bssid": "aa:bb:cc:dd:ee:ff", "signal": -65, "freq": 5180, "key_mgmt": "wpa-psk", "minrate": 6000000}]})
-    )
-    result = await client.get("/api/v1/network/wlan/scan", params={"type": "active", "interface": "wlan0"})
-    assert "nets" in result
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_connect_wlan_requires_psk_for_wpa2():
-    from mcp.server.fastmcp import FastMCP
-    from wlanpi_mcp.tools.wlan import register
-    from unittest.mock import AsyncMock, MagicMock
-
-    mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value={"status": "connected"})
-
-    mcp = FastMCP("test")
-    register(mcp, mock_client)
-
-    # Access the registered tool by name
-    tool_fn = mcp._tool_manager._tools["connect_wlan"].fn
-    result = await tool_fn(interface="wlan0", ssid="MyNet", security="WPA2-PSK", psk=None)
-    assert "error" in result
-    assert "psk is required" in result["error"]
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_connect_wlan_builds_correct_body():
+async def test_scan_wlan_uses_canonical_endpoint():
     from unittest.mock import AsyncMock, MagicMock
     from wlanpi_mcp.tools.wlan import register
     from mcp.server.fastmcp import FastMCP
 
     mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value={"status": "connected"})
+    mock_client.get = AsyncMock(return_value={"nets": []})
 
     mcp = FastMCP("test")
     register(mcp, mock_client)
 
-    tool_fn = mcp._tool_manager._tools["connect_wlan"].fn
-    await tool_fn(interface="wlan0", ssid="Corp", security="WPA2-PSK", psk="secret123")
+    tool_fn = mcp._tool_manager._tools["scan_wlan"].fn
+    await tool_fn(interface="wlan0", detail="full")
 
-    mock_client.post.assert_called_once()
-    body = mock_client.post.call_args.kwargs["json"]
-    assert body["interface"] == "wlan0"
-    assert body["netConfig"]["id"] == "mcp-Corp"
-    ns = body["netConfig"]["namespaces"][0]
-    assert ns["security"]["ssid"] == "Corp"
-    assert ns["security"]["psk"] == "secret123"
+    mock_client.get.assert_called_once()
+    path = mock_client.get.call_args.args[0]
+    params = mock_client.get.call_args.kwargs["params"]
+    assert path == "/api/v1/utils/wlan/scan"
+    assert params == {"hidden": True, "detail": "full", "iface": "wlan0"}
+
+
+def test_deprecated_wlan_tools_removed():
+    """/network/wlan/set returns 410 Gone and getInterfaces/getConnected are
+    deprecated upstream — their tools were removed in favour of the netconfig
+    tools (create/activate config, config status)."""
+    from unittest.mock import MagicMock
+    from wlanpi_mcp.tools.wlan import register
+    from mcp.server.fastmcp import FastMCP
+
+    mcp = FastMCP("test")
+    register(mcp, MagicMock())
+
+    tools = mcp._tool_manager._tools
+    assert "connect_wlan" not in tools
+    assert "get_wlan_interfaces" not in tools
+    assert "get_connected_network" not in tools
+    assert "scan_wlan" in tools
+    assert "revert_wlan" in tools
 
 
 # ── VLAN ─────────────────────────────────────────────────────────────────────

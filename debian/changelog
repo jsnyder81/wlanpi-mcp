@@ -1,3 +1,43 @@
+wlanpi-mcp (0.3.0) unstable; urgency=medium
+
+  * Security: bind each SSE session to the token that opened it. The
+    middleware publishes a per-token principal (sha256 fingerprint) so the
+    MCP transport rejects any POST /messages/ presenting a different token,
+    closing cross-session tool-call injection when a session id is known.
+  * Tag outbound wlanpi-core calls with 'X-Wlanpi-Client: mcp' so core's
+    nginx routes on-box (localhost) requests to the JWT validator instead of
+    the localhost HMAC path (which needs a root-owned secret this
+    unprivileged service cannot read). Requires the companion wlanpi-core
+    nginx change; on-box JWT passthrough works without pointing
+    WLANPI_CORE_URL at a LAN IP.
+  * docs/auth-flow.md: document the end-to-end auth path and session binding.
+
+ -- WLAN Pi Developers <developers@wlanpi.com>  Thu, 09 Jul 2026 00:00:00 +0000
+
+wlanpi-mcp (0.2.0) unstable; urgency=medium
+
+  * Full endpoint coverage of wlanpi-core 2.1.11 API
+  * New system tools: device model, service restart, datetime/timezone
+    management, reboot/shutdown (gated by ALLOW_POWER_CONTROL, default on),
+    hotspot client count and SSID/passphrase
+  * New network diagnostics tools: routing table, TCP/UDP connections,
+    DHCP leases, per-interface link stats, DHCP renew, WLAN USB/PCI
+    drivers, public IPv6, ethernet interface details
+  * New wifi tools: PHY capabilities, regulatory info, hotspot stations
+    and per-station link stats
+  * New utils tools: speedtest, ethernet port blinker start/stop/status
+  * New bluetooth tool: discoverable pairing mode
+  * Migrated Wi-Fi scan to canonical /api/v1/utils/wlan/scan endpoint
+  * Removed tools backed by deprecated/removed wlan endpoints
+    (connect_wlan, get_wlan_interfaces, get_connected_network) — use the
+    network config tools instead
+  * JWT bearer-token passthrough authentication for SSE transport
+  * postinst: open UFW port 8765/tcp for SSE clients (closed on remove);
+    default config now matches the JWT passthrough design (removes stale
+    API-key/shared-secret settings)
+
+ -- WLAN Pi Developers <developers@wlanpi.com>  Wed, 08 Jul 2026 00:00:00 +0000
+
 wlanpi-mcp (0.1.0) unstable; urgency=medium
 
   * Initial release — Phase 1 MVP

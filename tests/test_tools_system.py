@@ -3,16 +3,6 @@ import respx
 import httpx
 
 from wlanpi_mcp.config import Settings, ALLOWED_SERVICES
-from wlanpi_mcp.client.core_client import CoreClient
-
-
-@pytest.fixture
-def client(settings, mock_token):
-    c = CoreClient.__new__(CoreClient)
-    c._settings = settings
-    c._token_manager = mock_token
-    c._http = httpx.AsyncClient(base_url=settings.WLANPI_CORE_URL)
-    return c
 
 
 @respx.mock

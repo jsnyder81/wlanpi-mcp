@@ -6,3 +6,11 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
+
+# Debian build artifacts (dpkg-buildpackage / debhelper output)
+debian/wlanpi-mcp/
+debian/.debhelper/
+debian/files
+debian/debhelper-build-stamp
+debian/*.substvars
+debian/*.debhelper

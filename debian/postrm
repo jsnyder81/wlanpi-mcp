@@ -6,7 +6,14 @@ case "$1" in
         rm -rf /etc/wlanpi-mcp
     ;;
 
-    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    remove)
+        # Close the SSE port opened by postinst
+        if command -v ufw >/dev/null 2>&1; then
+            ufw delete allow 8765/tcp >/dev/null 2>&1 || true
+        fi
+    ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
     ;;
 
     *)

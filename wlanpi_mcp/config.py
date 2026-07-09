@@ -32,11 +32,12 @@ ALLOWED_SERVICES = [
 
 class Settings(BaseSettings):
     WLANPI_CORE_URL: str = "http://localhost:31415"
-    WLANPI_CORE_SECRET_PATH: str = (
-        "/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin"
-    )
-    WLANPI_CORE_DEVICE_ID: str = "wlanpi-mcp"
-    WLANPI_MCP_API_KEY: str = ""
+    # Fallback wlanpi-core JWT for stdio transport, where there is no HTTP
+    # Authorization header to pass through. Leave empty in SSE/daemon mode.
+    WLANPI_CORE_TOKEN: str = ""
+    # Gate for the reboot_device/shutdown_device tools. Set false to prevent
+    # MCP clients from power-cycling the device.
+    ALLOW_POWER_CONTROL: bool = True
     WLANPI_MCP_HOST: str = "0.0.0.0"
     WLANPI_MCP_PORT: int = 8765
     LOG_LEVEL: str = "INFO"

@@ -22,6 +22,7 @@ from wlanpi_mcp.tools import (
     system,
     utils,
     vlan,
+    wifi,
     wlan,
 )
 
@@ -49,6 +50,7 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8765) -
     profiler.register(mcp, client)
     bluetooth.register(mcp, client)
     netconfig.register(mcp, client)
+    wifi.register(mcp, client)
 
     # Phase 3 — packet capture, iw scan, regulatory domain, mode, battery
     capture.register(mcp, client)

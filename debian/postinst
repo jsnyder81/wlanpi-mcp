@@ -9,30 +9,37 @@ case "$1" in
         # Create config directory if needed
         mkdir -p "$CONFIG_DIR"
 
-        # Generate API key on first install
+        # Write default config on first install. Auth is JWT passthrough:
+        # SSE clients send a wlanpi-core token as 'Authorization: Bearer'.
         if [ ! -f "$CONFIG_FILE" ]; then
-            API_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
             cat > "$CONFIG_FILE" <<EOF
 WLANPI_CORE_URL=http://localhost:31415
-WLANPI_CORE_SECRET_PATH=/home/wlanpi/.local/share/wlanpi-core/secrets/shared_secret.bin
-WLANPI_CORE_DEVICE_ID=wlanpi-mcp
-WLANPI_MCP_API_KEY=${API_KEY}
+# Fallback wlanpi-core JWT for stdio transport only. In SSE/daemon mode leave
+# empty: clients must send their own token as 'Authorization: Bearer <token>'.
+WLANPI_CORE_TOKEN=
 WLANPI_MCP_HOST=0.0.0.0
 WLANPI_MCP_PORT=8765
 LOG_LEVEL=INFO
+# Allow MCP clients to reboot/shut down the device. Set false to disable.
+ALLOW_POWER_CONTROL=true
 EOF
             echo ""
             echo "============================================================"
-            echo "  WlanPi MCP Server installed"
-            echo "  API key for SSE clients:"
-            echo "  ${API_KEY}"
-            echo "  Stored in: ${CONFIG_FILE}"
+            echo "  WlanPi MCP Server installed (SSE on port 8765)"
+            echo "  Clients authenticate with a wlanpi-core JWT:"
+            echo "  POST http://<device>:31415/api/v1/auth/token"
             echo "============================================================"
             echo ""
         fi
 
         chmod 640 "$CONFIG_FILE"
         chown root:wlanpi "$CONFIG_FILE" 2>/dev/null || true
+
+        # Open the SSE port in UFW so LAN MCP clients can reach the server.
+        # 8765 is the shipped default; adjust manually if WLANPI_MCP_PORT is changed.
+        if command -v ufw >/dev/null 2>&1; then
+            ufw allow 8765/tcp comment 'wlanpi-mcp' >/dev/null 2>&1 || true
+        fi
     ;;
 
     abort-upgrade|abort-remove|abort-deconfigure)

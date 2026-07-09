@@ -8,86 +8,33 @@ from wlanpi_mcp.client.core_client import CoreClient
 def register(mcp: FastMCP, client: CoreClient) -> None:
 
     @mcp.tool()
-    async def get_wlan_interfaces() -> dict:
-        """Get all WLAN interfaces known to wpa_supplicant via D-Bus."""
-        return await client.get("/api/v1/network/wlan/getInterfaces")
-
-    @mcp.tool()
     async def scan_wlan(
-        interface: str,
-        type: Literal["active", "passive"] = "active",
+        interface: Optional[str] = None,
+        namespace: Optional[str] = None,
+        include_hidden: bool = True,
+        detail: Literal["short", "full"] = "short",
     ) -> dict:
         """
-        Scan for Wi-Fi networks on the given interface.
+        Scan for Wi-Fi networks. Namespace-aware, with automatic monitor adapter
+        selection. If multiple monitor adapters exist and no interface is given,
+        returns 'needsSelection' with candidates instead of scanning — call again
+        with one of the candidate interfaces.
+
+        To connect to a network found by this scan, create and activate a network
+        configuration (create_network_config / activate_network_config).
 
         Args:
-            interface: WLAN interface name (e.g. 'wlan0')
-            type: Scan type — 'active' (sends probe requests) or 'passive' (listen only)
+            interface: WLAN interface to scan with (e.g. 'wlan0'); auto-selected if omitted
+            namespace: Optional network namespace the interface lives in
+            include_hidden: Include hidden SSIDs in results
+            detail: 'short' for list-friendly fields plus RF extensions, 'full' for everything
         """
-        return await client.get(
-            "/api/v1/network/wlan/scan",
-            params={"type": type, "interface": interface},
-        )
-
-    @mcp.tool()
-    async def get_connected_network(interface: str) -> dict:
-        """
-        Get the currently associated Wi-Fi network on an interface.
-
-        Args:
-            interface: WLAN interface name (e.g. 'wlan0')
-        """
-        return await client.get(
-            "/api/v1/network/wlan/getConnected",
-            params={"interface": interface},
-        )
-
-    @mcp.tool()
-    async def connect_wlan(
-        interface: str,
-        ssid: str,
-        security: Literal["WPA2-PSK", "WPA3-PSK", "OPEN", "OWE"],
-        psk: Optional[str] = None,
-        remove_all_first: bool = True,
-    ) -> dict:
-        """
-        Connect a WLAN interface to a Wi-Fi network.
-
-        This reconfigures wpa_supplicant on the specified interface. The connection
-        runs inside a network namespace (testns) and does not affect the root namespace.
-
-        Args:
-            interface: WLAN interface name (e.g. 'wlan0')
-            ssid: Network SSID to connect to
-            security: Security type — WPA2-PSK, WPA3-PSK, OPEN, or OWE
-            psk: Pre-shared key (required for WPA2-PSK and WPA3-PSK)
-            remove_all_first: Remove existing wpa_supplicant configs before connecting
-        """
-        if security in ("WPA2-PSK", "WPA3-PSK") and not psk:
-            return {"error": f"psk is required for {security}"}
-
-        net_security = {"ssid": ssid, "security": security}
-        if psk:
-            net_security["psk"] = psk
-
-        body = {
-            "interface": interface,
-            "netConfig": {
-                "id": f"mcp-{ssid}",
-                "namespaces": [
-                    {
-                        "namespace": "testns",
-                        "mode": "managed",
-                        "iface_display_name": ssid,
-                        "phy": "phy0",
-                        "interface": interface,
-                        "security": net_security,
-                    }
-                ],
-            },
-            "removeAllFirst": remove_all_first,
-        }
-        return await client.post("/api/v1/network/wlan/set", json=body)
+        params: dict = {"hidden": include_hidden, "detail": detail}
+        if interface:
+            params["iface"] = interface
+        if namespace:
+            params["namespace"] = namespace
+        return await client.get("/api/v1/utils/wlan/scan", params=params)
 
     @mcp.tool()
     async def revert_wlan(

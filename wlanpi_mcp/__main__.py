@@ -58,13 +58,13 @@ def main() -> None:
 
 def _run_sse(mcp, settings, host: str, port: int) -> None:
     import uvicorn
-    from wlanpi_mcp.middleware.api_key import APIKeyMiddleware
+    from wlanpi_mcp.middleware.bearer_token import BearerTokenMiddleware
 
-    # FastMCP exposes the Starlette ASGI app for SSE via sse_app()
+    # FastMCP exposes the Starlette ASGI app for SSE via sse_app().
+    # Every connection must present a wlanpi-core JWT, which is passed
+    # through to wlanpi-core on API calls (validated there, not here).
     sse_app = mcp.sse_app()
-
-    if settings.WLANPI_MCP_API_KEY:
-        sse_app.add_middleware(APIKeyMiddleware, settings=settings)
+    sse_app.add_middleware(BearerTokenMiddleware)
 
     uvicorn.run(
         sse_app,

@@ -1,11 +1,9 @@
-import json
 import logging
 from typing import Any, Optional
-from urllib.parse import urlencode
 
 import httpx
 
-from wlanpi_mcp.auth.hmac_client import sign_request
+from wlanpi_mcp.auth.token_context import get_token
 from wlanpi_mcp.config import Settings
 
 log = logging.getLogger(__name__)
@@ -26,6 +24,23 @@ def init_client(settings: Settings) -> "CoreClient":
 
 
 class CoreClient:
+    """
+    Async client for the wlanpi-core API.
+
+    Auth is pure passthrough: the wlanpi-core JWT presented by the MCP client
+    (captured by BearerTokenMiddleware, or WLANPI_CORE_TOKEN for stdio mode)
+    is forwarded as the Bearer token on every request. wlanpi-core validates
+    it — this server never mints or verifies tokens itself.
+
+    Every request is tagged 'X-Wlanpi-Client: mcp' so core's nginx routes it to
+    the JWT validator even when we call over loopback. Without the tag, on-box
+    (localhost) requests are forced onto core's HMAC path, which needs a
+    root-owned shared secret this unprivileged service cannot read.
+    """
+
+    #: Tag read by core's nginx to route on-box calls to the JWT auth path.
+    CLIENT_TAG = "mcp"
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._http = httpx.AsyncClient(
@@ -48,30 +63,24 @@ class CoreClient:
     async def delete(self, path: str, **kwargs: Any) -> Any:
         return await self._request("DELETE", path, **kwargs)
 
+    def _current_token(self) -> str:
+        token = get_token() or self._settings.WLANPI_CORE_TOKEN
+        if not token:
+            raise RuntimeError(
+                "No wlanpi-core token available. Connect with "
+                "'Authorization: Bearer <token>' (SSE) or set WLANPI_CORE_TOKEN "
+                "(stdio). Tokens are issued by wlanpi-core at /api/v1/auth/token."
+            )
+        return token
+
     async def _request(self, method: str, path: str, **kwargs: Any) -> Any:
-        # Serialize JSON body ourselves so we control the exact bytes for HMAC
-        body_str = ""
-        if "json" in kwargs:
-            body_str = json.dumps(kwargs.pop("json"), separators=(",", ":"))
-            existing = kwargs.pop("headers", {})
-            kwargs["content"] = body_str.encode()
-            kwargs["headers"] = {**existing, "Content-Type": "application/json"}
-        elif "content" in kwargs:
-            content = kwargs["content"]
-            body_str = content.decode() if isinstance(content, bytes) else (content or "")
-
-        params = kwargs.get("params") or {}
-        query_string = urlencode(params) if params else ""
-
-        signature = sign_request(
-            self._settings.WLANPI_CORE_SECRET_PATH,
-            method.upper(),
-            path,
-            query_string,
-            body_str,
+        headers = {
+            **kwargs.get("headers", {}),
+            "Authorization": f"Bearer {self._current_token()}",
+            "X-Wlanpi-Client": self.CLIENT_TAG,
+        }
+        response = await self._http.request(
+            method, path, **{**kwargs, "headers": headers}
         )
-
-        headers = {**kwargs.pop("headers", {}), "X-Request-Signature": signature}
-        response = await self._http.request(method, path, headers=headers, **kwargs)
         response.raise_for_status()
         return response.json()

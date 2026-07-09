@@ -24,3 +24,11 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
             action: 'on' to enable Bluetooth, 'off' to disable it
         """
         return await client.post(f"/api/v1/bluetooth/power/{action}")
+
+    @mcp.tool()
+    async def start_bluetooth_pairing() -> dict:
+        """
+        Put the WlanPi into Bluetooth discoverable pairing mode (starts bt-timedpair)
+        so a phone or laptop can pair with it.
+        """
+        return await client.post("/api/v1/bluetooth/pair")
