@@ -1,3 +1,14 @@
+wlanpi-mcp (0.3.2) unstable; urgency=medium
+
+  * Stop suppressing ufw output in postinst/postrm: a field install
+    silently ended up with only the IPv6 allow rule for 8766, leaving
+    LAN MCP clients timing out. Rule add/delete results now appear in
+    the apt/image-build log; '|| true' still prevents install aborts.
+  * Sync wlanpi_mcp.__version__ with the package version (was left at
+    0.3.0 in the 0.3.1 release).
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Thu, 16 Jul 2026 15:51:45 +0000
+
 wlanpi-mcp (0.3.1) unstable; urgency=medium
 
   * Move default SSE port from 8765 to 8766: 8765 collides with the
