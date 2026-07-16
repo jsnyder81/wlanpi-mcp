@@ -18,14 +18,14 @@ WLANPI_CORE_URL=http://localhost:31415
 # empty: clients must send their own token as 'Authorization: Bearer <token>'.
 WLANPI_CORE_TOKEN=
 WLANPI_MCP_HOST=0.0.0.0
-WLANPI_MCP_PORT=8765
+WLANPI_MCP_PORT=8766
 LOG_LEVEL=INFO
 # Allow MCP clients to reboot/shut down the device. Set false to disable.
 ALLOW_POWER_CONTROL=true
 EOF
             echo ""
             echo "============================================================"
-            echo "  WlanPi MCP Server installed (SSE on port 8765)"
+            echo "  WlanPi MCP Server installed (SSE on port 8766)"
             echo "  Clients authenticate with a wlanpi-core JWT:"
             echo "  POST http://<device>:31415/api/v1/auth/token"
             echo "============================================================"
@@ -36,9 +36,9 @@ EOF
         chown root:wlanpi "$CONFIG_FILE" 2>/dev/null || true
 
         # Open the SSE port in UFW so LAN MCP clients can reach the server.
-        # 8765 is the shipped default; adjust manually if WLANPI_MCP_PORT is changed.
+        # 8766 is the shipped default; adjust manually if WLANPI_MCP_PORT is changed.
         if command -v ufw >/dev/null 2>&1; then
-            ufw allow 8765/tcp comment 'wlanpi-mcp' >/dev/null 2>&1 || true
+            ufw allow 8766/tcp comment 'wlanpi-mcp' >/dev/null 2>&1 || true
         fi
     ;;
 

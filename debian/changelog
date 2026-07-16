@@ -1,3 +1,12 @@
+wlanpi-mcp (0.3.1) unstable; urgency=medium
+
+  * Move default SSE port from 8765 to 8766: 8765 collides with the
+    wlanpi-fpms2 state service, leaving whichever service started second
+    in a crash loop. Updates config default, server fallback, shipped
+    config.env template, install banner, and UFW open/close rules.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Wed, 16 Jul 2026 05:00:00 -0600
+
 wlanpi-mcp (0.3.0) unstable; urgency=medium
 
   * Security: bind each SSE session to the token that opened it. The

@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     # MCP clients from power-cycling the device.
     ALLOW_POWER_CONTROL: bool = True
     WLANPI_MCP_HOST: str = "0.0.0.0"
-    WLANPI_MCP_PORT: int = 8765
+    # 8766: avoid colliding with the wlanpi-fpms2 state service on 8765
+    WLANPI_MCP_PORT: int = 8766
     LOG_LEVEL: str = "INFO"
 
     model_config = SettingsConfigDict(
