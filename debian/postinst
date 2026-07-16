@@ -35,10 +35,20 @@ EOF
         chmod 640 "$CONFIG_FILE"
         chown root:wlanpi "$CONFIG_FILE" 2>/dev/null || true
 
-        # Open the SSE port in UFW so LAN MCP clients can reach the server.
-        # 8766 is the shipped default; adjust manually if WLANPI_MCP_PORT is changed.
-        if command -v ufw >/dev/null 2>&1; then
-            ufw allow 8766/tcp comment 'wlanpi-mcp' || true
+        # Open the SSE port in UFW via the shipped application profile
+        # (/etc/ufw/applications.d/wlanpi-mcp). The setup script installs the
+        # profile and runs `ufw allow wlanpi-mcp`; 8766 is defined in
+        # /etc/wlanpi-mcp/ufw/wlanpi-mcp.rules, adjust there if the port changes.
+        # In a chroot (image build) ufw isn't active, so defer to the first-boot
+        # oneshot service instead of applying rules now.
+        if ischroot; then
+            if [ -f /lib/systemd/system/wlanpi-mcp-ufw-first-boot.service ]; then
+                systemctl enable wlanpi-mcp-ufw-first-boot.service || true
+            fi
+        else
+            if [ -x /etc/wlanpi-mcp/ufw/wlanpi-mcp-ufw-rules-setup.sh ]; then
+                /etc/wlanpi-mcp/ufw/wlanpi-mcp-ufw-rules-setup.sh || true
+            fi
         fi
     ;;
 

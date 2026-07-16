@@ -7,10 +7,15 @@ case "$1" in
     ;;
 
     remove)
-        # Close the SSE port opened by postinst
+        # Close the SSE port and remove the UFW application profile that the
+        # setup script installed into /etc/ufw/applications.d (not dpkg-owned,
+        # so we clean it up here). Delete the rule before removing the profile
+        # so ufw can still resolve the 'wlanpi-mcp' name.
         if command -v ufw >/dev/null 2>&1; then
-            ufw delete allow 8766/tcp || true
+            ufw delete allow wlanpi-mcp || true
         fi
+        rm -f /etc/ufw/applications.d/wlanpi-mcp
+        rm -f /etc/wlanpi-mcp/installed-rules-version
     ;;
 
     upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)

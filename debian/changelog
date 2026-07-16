@@ -1,3 +1,24 @@
+wlanpi-mcp (0.3.3) unstable; urgency=medium
+
+  * Migrate UFW handling to a ufw application profile, matching the
+    wlanpi-core pattern. The profile is staged at
+    /etc/wlanpi-mcp/ufw/wlanpi-mcp.rules and installed into
+    /etc/ufw/applications.d/wlanpi-mcp by a versioned setup script, which
+    then runs 'ufw allow wlanpi-mcp' instead of a hardcoded '8766/tcp'.
+    The port now lives in one declarative file and the resulting rule is
+    named rather than a bare port literal.
+  * postinst is now chroot-aware: on a live install it applies rules
+    directly; during an image build (chroot, ufw inactive) it enables a
+    wlanpi-mcp-ufw-first-boot.service oneshot to apply them on first boot.
+    This fixes the ufw allow silently no-op'ing at image-build time.
+  * The setup script drops any legacy literal 8766/tcp rule from pre-0.3.3
+    packages so upgrades don't leave a duplicate in 'ufw status'.
+  * postrm removes the (non-dpkg-owned) applications.d profile and the
+    installed-rules-version marker, deleting the rule before the profile
+    so ufw can still resolve the name.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Thu, 16 Jul 2026 18:41:32 +0000
+
 wlanpi-mcp (0.3.2) unstable; urgency=medium
 
   * Stop suppressing ufw output in postinst/postrm: a field install
