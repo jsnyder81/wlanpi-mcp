@@ -38,7 +38,7 @@ EOF
         # Open the SSE port in UFW so LAN MCP clients can reach the server.
         # 8766 is the shipped default; adjust manually if WLANPI_MCP_PORT is changed.
         if command -v ufw >/dev/null 2>&1; then
-            ufw allow 8766/tcp comment 'wlanpi-mcp' >/dev/null 2>&1 || true
+            ufw allow 8766/tcp comment 'wlanpi-mcp' || true
         fi
     ;;
 
