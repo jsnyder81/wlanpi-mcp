@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An MCP (Model Context Protocol) server that exposes WlanPi capabilities — device info, service management, Wi-Fi scanning, profiler, Bluetooth, VLANs, packet capture — to AI assistants. It is mostly a thin bridge to the `wlanpi-core` REST API on `http://localhost:31415`; the exception is packet capture, which runs `dumpcap`/`tshark` subprocesses directly on the device.
+An MCP (Model Context Protocol) server that exposes WlanPi capabilities — device info, service management, Wi-Fi scanning, profiler, Bluetooth, VLANs — to AI assistants. It is a thin bridge to the `wlanpi-core` REST API on `http://localhost:31415`: every tool and resource goes through that API, and nothing runs local subprocesses or reads local files. Keep it that way — if a capability has no wlanpi-core endpoint, the endpoint gets added upstream first.
 
 ## Commands
 
@@ -32,8 +32,6 @@ dpkg-buildpackage -us -uc
 - `wlanpi_mcp/server.py` — `create_server()` builds the FastMCP instance and wires every module in. All tool/resource/prompt modules follow the same pattern: a top-level `register(mcp, client)` function containing `@mcp.tool()` / `@mcp.resource()` decorated closures. Adding a capability = new module in `tools/` or `resources/` + a `register()` call in `server.py`. The "Phase 1/2/3" comments reflect the order features were built, nothing more.
 - `wlanpi_mcp/client/core_client.py` — `CoreClient`, the single async httpx client for wlanpi-core. Module-level singleton via `init_client()`/`get_client()`, created in `__main__.py` and passed to `register()` functions.
 - `wlanpi_mcp/config.py` — pydantic-settings `Settings`, loaded from environment or `/etc/wlanpi-mcp/config.env`. Also holds `ALLOWED_SERVICES`, the allowlist that gates `start_service`/`stop_service`/`restart_service`. `ALLOW_POWER_CONTROL` (default true) gates `reboot_device`/`shutdown_device`.
-- `wlanpi_mcp/tools/capture.py` — packet capture is local subprocess work, not a wlanpi-core call. Sessions live in the module-level `_sessions` dict (session_id → dumpcap process + pcap path), which is in-memory and per-process. `resources/capture.py` imports that same `_sessions` to serve the raw PCAP as a binary MCP resource at `capture://sessions/{session_id}/pcap`.
-
 ### Authentication: JWT passthrough (deliberate design — do not add server-side auth)
 
 This server implements **no authentication of its own**. The MCP client presents a JWT issued by wlanpi-core (`POST /api/v1/auth/token`) as `Authorization: Bearer <token>`, and that same token is passed through on every outbound wlanpi-core API call, where it is validated. This forces all MCP access through wlanpi-core's token system, even onbox.

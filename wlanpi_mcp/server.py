@@ -4,7 +4,6 @@ from wlanpi_mcp.client.core_client import CoreClient
 from wlanpi_mcp.prompts import diagnostics
 from wlanpi_mcp.resources import (
     bluetooth as bt_res,
-    capture as capture_res,
     device,
     mode as mode_res,
     netconfig as netconfig_res,
@@ -15,7 +14,6 @@ from wlanpi_mcp.resources import (
 from wlanpi_mcp.tools import (
     advanced,
     bluetooth,
-    capture,
     netconfig,
     network,
     profiler,
@@ -33,7 +31,7 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -
         instructions=(
             "WlanPi MCP server — exposes Wi-Fi network testing and analysis capabilities "
             "including device info, network interfaces, service management, Wi-Fi scanning, "
-            "packet capture, profiler control, and diagnostics."
+            "profiler control, and diagnostics."
         ),
         host=host,
         port=port,
@@ -52,8 +50,7 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -
     netconfig.register(mcp, client)
     wifi.register(mcp, client)
 
-    # Phase 3 — packet capture, iw scan, regulatory domain, mode, battery
-    capture.register(mcp, client)
+    # Phase 3 — regulatory domain, mode, battery
     advanced.register(mcp, client)
 
     # Resources — Phase 1
@@ -68,7 +65,6 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -
 
     # Resources — Phase 3
     mode_res.register(mcp, client)
-    capture_res.register(mcp, client)
 
     # Prompts
     diagnostics.register(mcp)
