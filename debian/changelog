@@ -1,3 +1,17 @@
+wlanpi-mcp (0.5.1-1) unstable; urgency=medium
+
+  * capture: dissect the QBSS/BSS Load element (IE tag 11) from beacons and
+    probe-responses. Each AP row now carries 'stations' (the associated
+    client count) and 'channel_utilization' (percent), when the AP
+    advertises the element. Merged across beacons so a later frame without
+    the element does not clear it.
+  * packaging: pin the dh_virtualenv interpreter to python3.13 (the
+    requires-python floor) instead of the host default python3, which can
+    drift ahead of the device (Ubuntu 26.04 defaults to 3.14) and yield a
+    venv whose compiled wheels will not load on the 3.13 device.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Sun, 30 Aug 2026 22:29:48 +0000
+
 wlanpi-mcp (0.5.0-1) unstable; urgency=medium
 
   * capture: greatly expand the dissector now that only the summary is

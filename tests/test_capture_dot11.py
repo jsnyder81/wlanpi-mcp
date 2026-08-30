@@ -276,6 +276,8 @@ def test_to_result_shape_and_sort_order():
         "phy",
         "tx_power",
         "country",
+        "stations",
+        "channel_utilization",
         "frames_seen",
     }
     assert rows[0] == {
@@ -291,9 +293,49 @@ def test_to_result_shape_and_sort_order():
         "phy": "g",
         "tx_power": 20,
         "country": "",
+        "stations": None,
+        "channel_utilization": None,
         "frames_seen": 1,
     }
     assert rows[2]["channel"] == 36 and rows[2]["phy"] == "a"
+
+
+def bss_load_ie(stations: int, chan_util: int, admission: int = 0) -> bytes:
+    return ie(
+        11,
+        struct.pack("<H", stations) + bytes([chan_util]) + struct.pack("<H", admission),
+    )
+
+
+def test_parse_beacon_decodes_qbss_load():
+    ap = parse_beacon(beacon(ies=bss_load_ie(7, 128, admission=250)))
+    assert ap.bss_load == {
+        "stations": 7,
+        "channel_utilization": 50.2,
+        "channel_utilization_raw": 128,
+        "available_admission_capacity": 250,
+    }
+
+
+def test_parse_beacon_ignores_truncated_qbss_load():
+    ap = parse_beacon(beacon(ies=ie(11, b"\x01\x00")))
+    assert ap.bss_load is None
+
+
+def test_bss_load_surfaces_in_ap_row():
+    table = ScanTable()
+    table.update(parse_beacon(beacon(ies=bss_load_ie(12, 26))))
+    row = table.to_result()[0]
+    assert row["stations"] == 12
+    assert row["channel_utilization"] == 10.2
+
+
+def test_bss_load_merges_across_beacons():
+    table = ScanTable()
+    table.update(parse_beacon(beacon()))  # first beacon has no QBSS element
+    table.update(parse_beacon(beacon(ies=bss_load_ie(3, 51))))
+    row = table.to_result()[0]
+    assert row["stations"] == 3 and row["channel_utilization"] == 20.0
 
 
 def test_to_result_is_empty_for_an_empty_table():

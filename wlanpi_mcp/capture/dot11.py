@@ -730,6 +730,26 @@ class ApInfo:
     last_seen: float = 0.0
     rsn: Optional[dict] = None
     wpa: Optional[dict] = None
+    bss_load: Optional[dict] = None
+
+
+def _parse_bss_load(val: bytes) -> Optional[dict]:
+    """Decode the QBSS/BSS Load element (tag 11): station count, channel
+    utilization (0-255 -> percent), and available admission capacity."""
+    if len(val) < 5:
+        return None
+    try:
+        stations = struct.unpack_from("<H", val, 0)[0]
+        chan_util = val[2]
+        admission = struct.unpack_from("<H", val, 3)[0]
+    except struct.error:
+        return None
+    return {
+        "stations": stations,
+        "channel_utilization": round(chan_util / 255 * 100, 1),
+        "channel_utilization_raw": chan_util,
+        "available_admission_capacity": admission,
+    }
 
 
 def _iter_ies(pkt: bytes, start: int):
@@ -796,6 +816,8 @@ def parse_beacon(pkt: bytes) -> Optional[ApInfo]:
             ap.channel = val[0]
         elif tag == 7 and len(val) >= 2:
             ap.country = val[:2].decode("ascii", "replace")
+        elif tag == 11:  # QBSS/BSS Load: station count, channel utilization
+            ap.bss_load = _parse_bss_load(val)
         elif tag == 35 and val:  # TPC report: tx power, link margin
             ap.txpower = struct.unpack_from("<b", val, 0)[0]
         elif tag == 45:
@@ -1031,6 +1053,8 @@ class ScanTable:
             existing.rsn = ap.rsn
         if ap.wpa:
             existing.wpa = ap.wpa
+        if ap.bss_load:
+            existing.bss_load = ap.bss_load
         existing.phy |= ap.phy
 
     def to_result(self) -> List[dict]:
@@ -1045,6 +1069,7 @@ class ScanTable:
         out = []
         for a in rows:
             detail = a.rsn or a.wpa or {}
+            load = a.bss_load or {}
             out.append(
                 {
                     "bssid": a.bssid,
@@ -1059,6 +1084,8 @@ class ScanTable:
                     "phy": phy_label(a),
                     "tx_power": a.txpower,
                     "country": a.country,
+                    "stations": load.get("stations"),
+                    "channel_utilization": load.get("channel_utilization"),
                     "frames_seen": a.count,
                 }
             )

@@ -205,9 +205,11 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
 
         The result has two parts:
         - 'aps': one row per BSSID from beacons/probe-responses, with SSID,
-          channel, signal, 802.11 amendments, advertised TX power and full
+          channel, signal, 802.11 amendments, advertised TX power, full
           security detail — the compact 'security' label plus 'akm' (the AKM
-          suite list), 'pairwise_ciphers', 'group_cipher' and 'pmf'.
+          suite list), 'pairwise_ciphers', 'group_cipher' and 'pmf' — and,
+          when the AP advertises a QBSS/BSS Load element, 'stations' (the
+          associated client count) and 'channel_utilization' (percent).
         - 'frames' / 'frame_types': every frame's named type/subtype counted
           exactly in 'frame_types', plus up to max_frames per-frame records in
           'frames'. Each record has the source/destination addresses
