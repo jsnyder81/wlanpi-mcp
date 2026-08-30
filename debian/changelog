@@ -1,3 +1,45 @@
+wlanpi-mcp (0.5.0-1) unstable; urgency=medium
+
+  * capture: greatly expand the dissector now that only the summary is
+    returned. AP rows carry the full 802.11 security picture - the AKM suite
+    list, pairwise and group ciphers, and PMF (MFPC/MFPR) - alongside the
+    compact security label. A new per-frame log covers every frame type: each
+    record names the type/subtype, lists the source/destination addresses
+    (addr1..addr4), carries a full radiotap decode, and, for the frames that
+    carry one, a decoded result (auth algorithm/status, assoc status/AID,
+    deauth/disassoc reason, probe/assoc SSID). Exact per-kind counts are always
+    returned; the per-frame record list is capped by max_frames (0 disables it)
+    so a busy capture stays a summary. The pcapng reader now yields a per-frame
+    timestamp (if_tsresol-aware).
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Sat, 29 Aug 2026 00:02:25 +0000
+
+wlanpi-mcp (0.4.1-1) unstable; urgency=medium
+
+  * capture: fix truncated captures at the end of the window. The owner flow
+    now stops the capture and drains for a short margin (STOP_DRAIN_S) so
+    dumpcap's final flushed frames and the CAPTURE_STOPPED confirmation are
+    dissected before the socket closes, instead of being cut off. Disable the
+    WebSocket client keepalive ping so a long capture is not torn down
+    mid-stream by a pong timeout.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Wed, 26 Aug 2026 03:42:22 +0000
+
+wlanpi-mcp (0.4.0-1) unstable; urgency=medium
+
+  * Add Wi-Fi packet-capture tools backed by the wlanpi-core capture
+    WebSocket (/api/v1/streaming/capture): capture_scan, capture_observe,
+    list_capture_sessions and get_capture_channels. Capture is consumed
+    over the core WebSocket (auth-first, pcapng stream) and dissected
+    locally into AP summaries; no raw pcap is returned to the client.
+  * Add the wlanpi_mcp/capture/ package: an incremental pcapng reader and
+    a stdlib-only radiotap/802.11 dissector vendored from wlanpi-core's
+    capture_harness reference client, plus a CaptureSocket protocol driver.
+  * Add the websockets runtime dependency and pin mcp[cli] to >=1.0,<2
+    (mcp 2.x renames FastMCP and breaks the server).
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Wed, 26 Aug 2026 02:23:58 +0000
+
 wlanpi-mcp (0.3.4-1) unstable; urgency=medium
 
   * Align tooling and packaging with the WLAN-Pi organization standard,

@@ -63,6 +63,16 @@ class CoreClient:
     async def delete(self, path: str, **kwargs: Any) -> Any:
         return await self._request("DELETE", path, **kwargs)
 
+    def current_token(self) -> str:
+        """
+        The wlanpi-core token for this request, by the same rule as REST calls.
+
+        Public so non-HTTP core transports (the capture WebSocket, which sends
+        the token in its first message) reuse this resolution instead of
+        duplicating it. Raises RuntimeError when no token is available.
+        """
+        return self._current_token()
+
     def _current_token(self) -> str:
         token = get_token() or self._settings.WLANPI_CORE_TOKEN
         if not token:

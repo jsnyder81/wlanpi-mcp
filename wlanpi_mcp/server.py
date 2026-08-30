@@ -14,6 +14,7 @@ from wlanpi_mcp.resources import (
 from wlanpi_mcp.tools import (
     advanced,
     bluetooth,
+    capture,
     netconfig,
     network,
     profiler,
@@ -52,6 +53,9 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -
 
     # Phase 3 — regulatory domain, mode, battery
     advanced.register(mcp, client)
+
+    # Packet capture — wlanpi-core's streaming WebSocket, not REST
+    capture.register(mcp, client)
 
     # Resources — Phase 1
     device.register(mcp, client)
