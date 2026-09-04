@@ -18,10 +18,11 @@ core capture WebSocket: no local subprocess, no other transport, same JWT.
 
 import asyncio
 import base64
+import glob
 import logging
 import os
+import re
 import time
-import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -112,6 +113,65 @@ def _within_capture_dir(path: str) -> bool:
     base = _capture_dir()
     resolved = os.path.realpath(path)
     return resolved == base or resolved.startswith(base + os.sep)
+
+
+_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
+
+
+def _safe_component(value: str) -> str:
+    """A filesystem-safe rendering of a session id for use in a filename."""
+    return _SAFE_RE.sub("_", value) or "session"
+
+
+def _capture_filename(session_id: str) -> str:
+    """`capture-<stamp>-<safe session id>.pcapng` — the session id is embedded
+    so a capture is recoverable from disk after the in-memory registry is
+    gone (e.g. a server restart). The stamp carries no '-' so the session id
+    is the whole third '-'-delimited field."""
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    return f"capture-{stamp}-{_safe_component(session_id)}.pcapng"
+
+
+def _session_from_filename(name: str) -> str:
+    base = name[: -len(".pcapng")] if name.endswith(".pcapng") else name
+    parts = base.split("-", 2)  # "capture", stamp, safe-session-id
+    return parts[2] if len(parts) == 3 else base
+
+
+def _resolve_session_path(session_id: str) -> Optional[str]:
+    """Path for a session id, from the registry first, then from disk — so a
+    fetch by session id still works when the registry has forgotten it."""
+    entry = _CAPTURES.get(session_id)
+    if entry is not None:
+        return entry.path
+    safe = _safe_component(session_id)
+    matches = sorted(
+        glob.glob(os.path.join(_capture_dir(), f"capture-*-{safe}.pcapng"))
+    )
+    return matches[-1] if matches else None
+
+
+def _disk_captures() -> List[dict]:
+    """Capture files present on disk but not (any longer) in the registry."""
+    known = {os.path.realpath(e.path) for e in _CAPTURES.values()}
+    try:
+        files = glob.glob(os.path.join(_capture_dir(), "capture-*.pcapng"))
+    except OSError:
+        files = []
+    out = []
+    for path in sorted(files):
+        resolved = os.path.realpath(path)
+        if resolved in known:
+            continue
+        out.append(
+            {
+                "session_id": _session_from_filename(os.path.basename(resolved)),
+                "path": resolved,
+                "status": "on_disk",
+                "size_bytes": _safe_size(resolved),
+            }
+        )
+    return out
 
 
 async def _run_file_capture(
@@ -254,10 +314,7 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
 
             capture_dir = settings.PCAP_CAPTURE_DIR
             os.makedirs(capture_dir, exist_ok=True)
-            stamp = time.strftime("%Y%m%d-%H%M%S")
-            token_suffix = uuid.uuid4().hex[:8]
-            filename = f"capture-{interface}-{stamp}-{token_suffix}.pcapng"
-            path = os.path.join(capture_dir, filename)
+            path = os.path.join(capture_dir, _capture_filename(session_id))
             # Unbuffered binary write so a fetch mid-capture sees current bytes.
             fileobj = open(path, "wb", buffering=0)
 
@@ -318,6 +375,14 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         """
         entry = _CAPTURES.get(session_id)
         if entry is None:
+            if _resolve_session_path(session_id) is not None:
+                return {
+                    "error": (
+                        f"session '{session_id}' is not a live capture in this "
+                        "server (it likely ended when the server restarted). Its "
+                        "file is still available via fetch_pcap_file."
+                    )
+                }
             return {
                 "error": (
                     f"no file capture with session_id '{session_id}'. See "
@@ -343,9 +408,11 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         Each entry gives the session_id, interface, on-device pcapng path,
         status (running/completed/stopped/error), current size and configured
         duration. Use stop_pcap_file to end a running one and fetch_pcap_file to
-        retrieve the file.
+        retrieve the file. Files left on disk from an earlier server run are
+        also listed, with status 'on_disk' — they can still be fetched.
         """
         captures = [entry.to_result() for entry in _CAPTURES.values()]
+        captures.extend(_disk_captures())
         return {"captures": captures, "count": len(captures)}
 
     @mcp.tool()
@@ -371,15 +438,15 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                 managed capture directory).
         """
         if session_id:
-            entry = _CAPTURES.get(session_id)
-            if entry is None:
+            resolved_path = _resolve_session_path(session_id)
+            if resolved_path is None:
                 return {
                     "error": (
-                        f"no file capture with session_id '{session_id}'. See "
+                        f"no capture file for session_id '{session_id}'. See "
                         "list_pcap_files."
                     )
                 }
-            path = entry.path
+            path = resolved_path
         elif not path:
             return {"error": "pass session_id or path"}
 

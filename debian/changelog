@@ -1,3 +1,15 @@
+wlanpi-mcp (0.6.1-1) unstable; urgency=medium
+
+  * capture: make file-backed captures resolvable by session_id from disk, not
+    just from the in-memory registry. The pcapng filename now embeds the
+    session_id (capture-<stamp>-<session_id>.pcapng), so fetch_pcap_file and
+    stop_pcap_file still find a capture by session_id after the registry is
+    gone (e.g. a server restart), and list_pcap_files also lists files left on
+    disk from an earlier run (status 'on_disk'). Fixes fetch_pcap_file needing
+    an explicit path once the server had restarted.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0000
+
 wlanpi-mcp (0.6.0-1) unstable; urgency=medium
 
   * capture: add a file-backed capture family alongside the streaming tools.

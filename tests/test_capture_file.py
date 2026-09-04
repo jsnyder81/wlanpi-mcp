@@ -253,7 +253,7 @@ async def test_fetch_unknown_session_is_an_error(capdir):
     _tmp, _use = capdir
     tools = _register()
     result = await tools["fetch_pcap_file"].fn(session_id="ghost")
-    assert "no file capture" in result["error"]
+    assert "no capture file" in result["error"]
 
 
 async def test_fetch_refuses_a_path_outside_the_capture_dir(capdir):
@@ -271,3 +271,54 @@ async def test_fetch_by_path_within_the_capture_dir_works(capdir):
     fetched = await tools["fetch_pcap_file"].fn(path=str(target))
     assert isinstance(fetched, EmbeddedResource)
     assert base64.b64decode(fetched.resource.blob) == target.read_bytes()
+
+
+async def test_fetch_by_session_id_falls_back_to_disk_after_registry_loss(capdir):
+    _tmp, use = capdir
+    use(
+        StubWS(
+            [
+                AUTH_OK,
+                sessions_event(),
+                CONFIG_APPLIED,
+                started_event("cap_disk"),
+                *pcapng_chunks(BEACON_A),
+                CAPTURE_ENDED,
+            ]
+        )
+    )
+    tools = _register()
+    await tools["start_pcap_file"].fn(channels=[6])
+    entry = await _await_capture("cap_disk")
+    expected = Path(entry.path).read_bytes()
+
+    # Simulate a server restart: the in-memory registry is gone, file remains.
+    capture_file._CAPTURES.clear()
+    fetched = await tools["fetch_pcap_file"].fn(session_id="cap_disk")
+    assert isinstance(fetched, EmbeddedResource)
+    assert base64.b64decode(fetched.resource.blob) == expected
+
+
+async def test_list_includes_on_disk_files_after_registry_loss(capdir):
+    _tmp, use = capdir
+    use(
+        StubWS(
+            [
+                AUTH_OK,
+                sessions_event(),
+                CONFIG_APPLIED,
+                started_event("cap_orphan"),
+                CAPTURE_ENDED,
+            ]
+        )
+    )
+    tools = _register()
+    await tools["start_pcap_file"].fn(channels=[6])
+    await _await_capture("cap_orphan")
+
+    capture_file._CAPTURES.clear()
+    listing = await tools["list_pcap_files"].fn()
+    assert listing["count"] == 1
+    record = listing["captures"][0]
+    assert record["status"] == "on_disk"
+    assert record["session_id"] == "cap_orphan"
