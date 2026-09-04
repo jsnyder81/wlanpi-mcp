@@ -44,10 +44,6 @@ STOP_DRAIN_S = 5
 VALID_WIDTHS = (20, 40, 80, 160)
 MIN_DWELL_MS = 50
 MAX_DWELL_MS = 60000
-#: Upper bound on how many per-frame records a capture returns. Per-kind counts
-#: are always exact; only the record list is capped so the result stays a
-#: summary rather than a text pcap.
-MAX_FRAMES_CAP = 2000
 
 #: Anything at or above this is treated as an explicit frequency in MHz rather
 #: than a channel number (6 GHz channels have no unambiguous number mapping).
@@ -240,18 +236,21 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
             duration_s: How long to capture, 1–60 seconds. The tool call
                 blocks for this whole window.
             pcap_filter: Optional BPF/pcap filter, e.g. 'type mgt subtype beacon'.
-            max_frames: Cap on per-frame records returned in 'frames' (0–2000);
+            max_frames: Cap on per-frame records returned in 'frames';
                 per-kind counts in 'frame_types' are always exact. Set 0 to
                 skip the per-frame records and get only the AP table and
-                counts. Beacons dominate a busy capture, so a pcap_filter such
-                as 'not type mgt subtype beacon' makes the record list focus on
-                the control/data/auth exchanges.
+                counts, or a negative value for no cap (every frame — a busy
+                capture can then return tens of thousands of records, so use
+                the file-capture tools for a full pcap instead). Beacons
+                dominate a busy capture, so a pcap_filter such as 'not type mgt
+                subtype beacon' makes the record list focus on the
+                control/data/auth exchanges.
         """
         if width not in VALID_WIDTHS:
             return {"error": f"width must be one of {list(VALID_WIDTHS)}, got {width}"}
         duration_s = _clamp(int(duration_s), 1, MAX_DURATION_S)
         dwell_ms = _clamp(int(dwell_ms), MIN_DWELL_MS, MAX_DWELL_MS)
-        frame_log = FrameLog(_clamp(int(max_frames), 0, MAX_FRAMES_CAP))
+        frame_log = FrameLog(int(max_frames))
 
         try:
             token = client.current_token()
@@ -399,12 +398,12 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                 interface ('wlanpiN', e.g. 'wlanpi0') whose capture to watch.
             duration_s: How long to listen, 1–60 seconds. The tool call blocks
                 for this whole window.
-            max_frames: Cap on per-frame records in 'frames' (0–2000); the
+            max_frames: Cap on per-frame records in 'frames'; the
                 'frame_types' counts are always exact. Set 0 for AP table and
-                counts only.
+                counts only, or a negative value for no cap (every frame).
         """
         duration_s = _clamp(int(duration_s), 1, MAX_DURATION_S)
-        frame_log = FrameLog(_clamp(int(max_frames), 0, MAX_FRAMES_CAP))
+        frame_log = FrameLog(int(max_frames))
 
         try:
             token = client.current_token()

@@ -977,9 +977,10 @@ class FrameLog:
     """
     Collect per-frame records during a capture window.
 
-    Keeps exact per-kind counts for every frame seen, but caps the returned
-    record list at ``max_frames`` so a busy capture stays a summary. Frame
-    timestamps are reported relative to the first frame.
+    Keeps exact per-kind counts for every frame seen. The returned record list
+    is capped at ``max_frames`` so a busy capture stays a summary; ``0`` returns
+    no records (counts only), and a negative value means no cap (every frame is
+    returned). Frame timestamps are reported relative to the first frame.
     """
 
     def __init__(self, max_frames: int = DEFAULT_MAX_FRAMES) -> None:
@@ -994,7 +995,8 @@ class FrameLog:
         self.total += 1
         kind = record.get("kind", "unknown")
         self.counts[kind] = self.counts.get(kind, 0) + 1
-        if len(self.frames) >= self.max_frames:
+        # A negative cap means "keep everything"; 0 keeps nothing.
+        if self.max_frames >= 0 and len(self.frames) >= self.max_frames:
             self.truncated = True
             return
         record["n"] = self.total

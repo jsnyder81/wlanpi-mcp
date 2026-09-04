@@ -1,3 +1,14 @@
+wlanpi-mcp (0.6.3-1) unstable; urgency=medium
+
+  * capture: remove the hard 2000-record cap on capture_scan/capture_observe.
+    max_frames is now caller-controlled with no ceiling: a positive value
+    returns up to that many per-frame records, 0 returns counts only, and a
+    negative value returns every frame (no cap). Per-kind counts remain exact
+    regardless. For a genuinely complete capture prefer the file-capture tools
+    over an unbounded capture_scan.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0000
+
 wlanpi-mcp (0.6.2-1) unstable; urgency=medium
 
   * capture: fetch_pcap_file/stop_pcap_file now take 'capture_id' instead of

@@ -591,3 +591,13 @@ def test_frame_log_zero_cap_keeps_counts_only():
     assert result["frames"] == []
     assert result["frame_total"] == 1
     assert result["frame_types"] == {"mgmt/beacon": 1}
+
+
+def test_frame_log_negative_cap_keeps_every_frame():
+    log = FrameLog(max_frames=-1)
+    for _ in range(5000):
+        log.add({"kind": "mgmt/beacon"})
+    result = log.to_result()
+    assert result["frame_total"] == 5000
+    assert result["frames_returned"] == 5000
+    assert result["frames_truncated"] is False

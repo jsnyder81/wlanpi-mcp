@@ -295,6 +295,25 @@ async def test_max_frames_zero_keeps_counts_but_no_records(ws):
     assert result["frame_types"] == {"mgmt/beacon": 2}
 
 
+async def test_negative_max_frames_returns_all_frames_uncapped(ws):
+    ws.script = [
+        AUTH_OK,
+        sessions_event(),
+        CONFIG_APPLIED,
+        started_event("cap_owned"),
+        *pcapng_chunks(BEACON_A, BEACON_B),
+        CAPTURE_ENDED,
+    ]
+    tools, _ = _register()
+    result = await tools["capture_scan"].fn(
+        interface="wlanpi0", channels=[6], duration_s=1, max_frames=-1
+    )
+
+    assert result["frame_total"] == 2
+    assert result["frames_returned"] == 2
+    assert result["frames_truncated"] is False
+
+
 async def test_owner_flow_maps_channel_numbers_and_frequencies(ws):
     ws.script = [
         AUTH_OK,
