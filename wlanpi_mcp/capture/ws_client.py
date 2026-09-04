@@ -299,18 +299,24 @@ class CaptureSocket:
         table: ScanTable,
         duration_s: float,
         frame_log: Optional[FrameLog] = None,
+        raw_sink: Optional[Any] = None,
     ) -> dict:
         """
         Read the stream for ``duration_s``, dissecting frames.
 
         Beacons/probe-responses are merged into ``table``; when ``frame_log``
-        is given, every frame is dissected into it as a per-frame record.
-        Returns a summary of the text events seen. Returns early when the
-        capture ends (owner stopped, or dumpcap exited).
+        is given, every frame is dissected into it as a per-frame record. When
+        ``raw_sink`` is given, each raw pcapng chunk is also written to it
+        verbatim (a callable taking ``bytes``, e.g. a file's ``write``) so the
+        dissected summary can be verified against the pcapng on disk. Returns a
+        summary of the text events seen. Returns early when the capture ends
+        (owner stopped, or dumpcap exited).
         """
         deadline = time.monotonic() + duration_s
 
         for chunk in self._pending_binary:
+            if raw_sink is not None:
+                raw_sink(chunk)
             self._absorb(chunk, reader, table, frame_log)
         self._pending_binary.clear()
 
@@ -332,7 +338,10 @@ class CaptureSocket:
                 stream_closed = True
                 break
             if isinstance(msg, (bytes, bytearray, memoryview)):
-                self._absorb(bytes(msg), reader, table, frame_log)
+                data = bytes(msg)
+                if raw_sink is not None:
+                    raw_sink(data)
+                self._absorb(data, reader, table, frame_log)
             elif isinstance(msg, str):
                 try:
                     event = json.loads(msg)

@@ -22,7 +22,6 @@ import base64
 import glob
 import logging
 import os
-import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -30,6 +29,7 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 from mcp.types import BlobResourceContents, EmbeddedResource
 
+from wlanpi_mcp.capture import storage
 from wlanpi_mcp.capture.ws_client import (
     CaptureError,
     CaptureSocket,
@@ -111,48 +111,21 @@ def _safe_size(path: str) -> int:
         return 0
 
 
-def _capture_dir() -> str:
-    return os.path.realpath(get_settings().PCAP_CAPTURE_DIR)
-
-
-def _within_capture_dir(path: str) -> bool:
-    base = _capture_dir()
-    resolved = os.path.realpath(path)
-    return resolved == base or resolved.startswith(base + os.sep)
-
-
-_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
-
-
-def _safe_component(value: str) -> str:
-    """A filesystem-safe rendering of a session id for use in a filename."""
-    return _SAFE_RE.sub("_", value) or "session"
-
-
-def _capture_filename(session_id: str) -> str:
-    """`capture-<stamp>-<safe session id>.pcapng` — the session id is embedded
-    so a capture is recoverable from disk after the in-memory registry is
-    gone (e.g. a server restart). The stamp carries no '-' so the session id
-    is the whole third '-'-delimited field."""
-    stamp = time.strftime("%Y%m%dT%H%M%S")
-    return f"capture-{stamp}-{_safe_component(session_id)}.pcapng"
-
-
-def _session_from_filename(name: str) -> str:
-    base = name[: -len(".pcapng")] if name.endswith(".pcapng") else name
-    parts = base.split("-", 2)  # "capture", stamp, safe-session-id
-    return parts[2] if len(parts) == 3 else base
+# The capture directory, filename scheme and path-confinement check live in
+# wlanpi_mcp.capture.storage, shared with the streaming tools.
+_capture_dir = storage.capture_dir
+_within_capture_dir = storage.within_capture_dir
 
 
 def _resolve_session_path(session_id: str) -> Optional[str]:
-    """Path for a session id, from the registry first, then from disk — so a
-    fetch by session id still works when the registry has forgotten it."""
+    """Path for a capture id, from the registry first, then from disk — so a
+    fetch by capture id still works when the registry has forgotten it."""
     entry = _CAPTURES.get(session_id)
     if entry is not None:
         return entry.path
-    safe = _safe_component(session_id)
+    safe = storage.safe_component(session_id)
     matches = sorted(
-        glob.glob(os.path.join(_capture_dir(), f"capture-*-{safe}.pcapng"))
+        glob.glob(os.path.join(storage.capture_dir(), f"capture-*-{safe}.pcapng"))
     )
     return matches[-1] if matches else None
 
@@ -161,7 +134,7 @@ def _disk_captures() -> List[dict]:
     """Capture files present on disk but not (any longer) in the registry."""
     known = {os.path.realpath(e.path) for e in _CAPTURES.values()}
     try:
-        files = glob.glob(os.path.join(_capture_dir(), "capture-*.pcapng"))
+        files = glob.glob(os.path.join(storage.capture_dir(), "capture-*.pcapng"))
     except OSError:
         files = []
     out = []
@@ -169,7 +142,7 @@ def _disk_captures() -> List[dict]:
         resolved = os.path.realpath(path)
         if resolved in known:
             continue
-        cid = _session_from_filename(os.path.basename(resolved))
+        cid = storage.session_from_filename(os.path.basename(resolved))
         out.append(
             {
                 "capture_id": cid,
@@ -327,11 +300,8 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
 
             owns = True
 
-            capture_dir = settings.PCAP_CAPTURE_DIR
-            os.makedirs(capture_dir, exist_ok=True)
-            path = os.path.join(capture_dir, _capture_filename(session_id))
-            # Unbuffered binary write so a fetch mid-capture sees current bytes.
-            fileobj = open(path, "wb", buffering=0)
+            # Unbuffered write so a fetch mid-capture sees current bytes.
+            path, fileobj = storage.open_capture_file(session_id)
 
             entry = FileCapture(
                 session_id=session_id,

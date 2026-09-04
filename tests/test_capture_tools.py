@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from tests.test_capture_dot11 import beacon, radiotap
 from tests.test_capture_pcapng import epb, idb, shb
+from wlanpi_mcp.capture import storage
 from wlanpi_mcp.capture.ws_client import CaptureSocket
 from wlanpi_mcp.client.core_client import CoreClient
 from wlanpi_mcp.config import Settings
@@ -128,7 +130,7 @@ BEACON_B = beacon(bssid="66:77:88:99:aa:bb", ssid=b"lab-5", rt=radiotap(5180, -6
 
 
 @pytest.fixture
-def ws(monkeypatch):
+def ws(monkeypatch, tmp_path):
     """Monkeypatches connect_capture to hand back a CaptureSocket on a stub."""
     stub = StubWS()
 
@@ -137,6 +139,11 @@ def ws(monkeypatch):
         return CaptureSocket(stub, url="ws://test/api/v1/streaming/capture")
 
     monkeypatch.setattr(capture_tools, "connect_capture", fake_connect)
+    # capture_scan/observe tee the raw pcapng to the managed dir; keep that in
+    # tmp_path so tests don't write into the real default location.
+    settings = Settings(PCAP_CAPTURE_DIR=str(tmp_path), _env_file=None)
+    monkeypatch.setattr(storage, "get_settings", lambda: settings)
+    stub.capture_dir = tmp_path
     return stub
 
 
@@ -295,6 +302,29 @@ async def test_max_frames_zero_keeps_counts_but_no_records(ws):
     assert result["frame_types"] == {"mgmt/beacon": 2}
 
 
+async def test_owner_flow_saves_the_raw_pcap_and_returns_its_path(ws, tmp_path):
+    ws.script = [
+        AUTH_OK,
+        sessions_event(),
+        CONFIG_APPLIED,
+        started_event("cap_owned"),
+        *pcapng_chunks(BEACON_A, BEACON_B),
+        CAPTURE_ENDED,
+    ]
+    tools, _ = _register()
+    result = await tools["capture_scan"].fn(
+        interface="wlanpi0", channels=[6], duration_s=1
+    )
+
+    path = Path(result["pcap_path"])
+    assert path.parent == tmp_path and path.suffix == ".pcapng"
+    data = path.read_bytes()
+    assert data[:4] == b"\x0a\x0d\x0d\x0a"  # pcapng section-header magic
+    assert result["pcap_bytes"] == len(data) > 0
+    # The saved capture is discoverable by capture_id (core's session id).
+    assert path.name.endswith("-cap_owned.pcapng")
+
+
 async def test_negative_max_frames_returns_all_frames_uncapped(ws):
     ws.script = [
         AUTH_OK,
@@ -420,7 +450,7 @@ async def test_config_invalid_is_returned_as_an_error(ws):
 async def test_owner_stops_the_capture_even_when_consuming_raises(ws, monkeypatch):
     ws.script = [AUTH_OK, sessions_event(), CONFIG_APPLIED, started_event()]
 
-    async def boom(sock, duration_s, frame_log, *, owner=False):
+    async def boom(sock, duration_s, frame_log, *, owner=False, raw_sink=None):
         raise RuntimeError("dissector exploded")
 
     monkeypatch.setattr(capture_tools, "_run_window", boom)
@@ -432,7 +462,13 @@ async def test_owner_stops_the_capture_even_when_consuming_raises(ws, monkeypatc
     assert ws.closed is True
 
 
-async def test_owner_drains_tail_frames_delivered_after_stop(monkeypatch):
+async def test_owner_drains_tail_frames_delivered_after_stop(monkeypatch, tmp_path):
+    # Keep the teed pcapng out of the real default dir.
+    monkeypatch.setattr(
+        storage,
+        "get_settings",
+        lambda: Settings(PCAP_CAPTURE_DIR=str(tmp_path), _env_file=None),
+    )
     # The window carries two beacons; a third beacon plus CAPTURE_STOPPED are
     # released only once the owner has sent 'stop', standing in for dumpcap's
     # flush on stop. The drain must read them, so the tail beacon lands in the

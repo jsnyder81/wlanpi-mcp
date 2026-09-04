@@ -20,6 +20,7 @@ from wlanpi_mcp.capture.dot11 import (
     channel_to_freq,
     freq_to_channel,
 )
+from wlanpi_mcp.capture import storage
 from wlanpi_mcp.capture.pcapng import PcapngReader
 from wlanpi_mcp.capture.ws_client import (
     CaptureError,
@@ -135,10 +136,11 @@ async def _run_window(
     frame_log: FrameLog,
     *,
     owner: bool = False,
+    raw_sink: Any = None,
 ) -> tuple[ScanTable, dict]:
     table = ScanTable()
     reader = PcapngReader()
-    events = await sock.consume(reader, table, duration_s, frame_log)
+    events = await sock.consume(reader, table, duration_s, frame_log, raw_sink)
     if owner and not events.get("capture_ended"):
         # The capture window is over. Ask core to stop, then keep dissecting
         # for a bounded margin: 'stop' flushes dumpcap's final frames and emits
@@ -148,7 +150,7 @@ async def _run_window(
         window_ended = events.get("capture_ended", False)
         window_closed = events.get("stream_closed", False)
         await sock.stop()
-        events = await sock.consume(reader, table, STOP_DRAIN_S, frame_log)
+        events = await sock.consume(reader, table, STOP_DRAIN_S, frame_log, raw_sink)
         # The drain always ends via our own stop (CAPTURE_STOPPED), so its
         # end flags describe the stop, not the capture. Keep the window's own
         # signal so 'capture_ended_early' means the capture died on its own,
@@ -156,6 +158,35 @@ async def _run_window(
         events["capture_ended"] = window_ended
         events["stream_closed"] = window_closed
     return table, events
+
+
+async def _run_and_save(
+    sock: CaptureSocket,
+    duration_s: int,
+    frame_log: FrameLog,
+    capture_id: str,
+    *,
+    owner: bool,
+) -> tuple[ScanTable, dict, dict]:
+    """Run a capture window while teeing the raw pcapng to a file so the
+    dissected summary can be verified against the frames. Writing is
+    best-effort — a storage problem never breaks the capture — and the file is
+    always closed. Returns ``(table, events, pcap_extra)`` where pcap_extra
+    carries ``pcap_path``/``pcap_bytes`` when the file was written."""
+    path, fileobj = storage.try_open_capture_file(capture_id)
+    sink = fileobj.write if fileobj is not None else None
+    try:
+        table, events = await _run_window(
+            sock, duration_s, frame_log, owner=owner, raw_sink=sink
+        )
+    finally:
+        if fileobj is not None:
+            try:
+                fileobj.close()
+            except OSError as exc:
+                log.debug("closing capture file failed: %r", exc)
+    extra = {"pcap_path": path, "pcap_bytes": storage.file_size(path)} if path else {}
+    return table, events, extra
 
 
 def _summary(
@@ -197,9 +228,11 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         This is a streaming capture: it captures real 802.11 frames off the air
         (unlike scan_wlan, which asks the driver for a scan), so it reports what
         is actually being transmitted. The call blocks for duration_s seconds
-        and returns a dissected summary — never raw pcap. To save a full pcap
-        file instead, use the non-streaming file-capture tools
-        (start_pcap_file/fetch_pcap_file).
+        and returns a dissected summary. The raw pcapng is also saved on the
+        device and its path returned in 'pcap_path' (fetch it with
+        fetch_pcap_file to verify the summary against the frames). For a capture
+        longer than the 60 s window, use the non-streaming file-capture tools
+        (start_pcap_file/fetch_pcap_file) instead.
 
         The result has two parts:
         - 'aps': one row per BSSID from beacons/probe-responses, with SSID,
@@ -318,8 +351,8 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                         raise
 
             if owns:
-                table, events = await _run_window(
-                    sock, duration_s, frame_log, owner=True
+                table, events, pcap = await _run_and_save(
+                    sock, duration_s, frame_log, session_id, owner=True
                 )
                 # _run_window already stopped the capture (or it ended on its
                 # own), so the finally must not send a second stop.
@@ -335,10 +368,13 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                     # Prefer core's snapshot of the running config over ours.
                     config=sock.session_config
                     or {"interfaces": config, "pcap_filter": pcap_filter or ""},
+                    **pcap,
                 )
 
             info = await sock.subscribe(existing[0]["session_id"])
-            table, events = await _run_window(sock, duration_s, frame_log)
+            table, events, pcap = await _run_and_save(
+                sock, duration_s, frame_log, info["session_id"], owner=False
+            )
             return _summary(
                 "subscriber",
                 table,
@@ -355,6 +391,7 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                     f"{info['session_id']}; joined it read-only instead of "
                     "taking it over"
                 ),
+                **pcap,
             )
         except CaptureError as exc:
             return {"error": str(exc)}
@@ -387,8 +424,10 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
 
         Returns the same dissected summary as capture_scan (an 'aps' table with
         full security detail, plus per-frame 'frames'/'frame_types' with
-        addresses, radiotap and decoded results), not raw pcap. Use
-        list_capture_sessions first if you want to see what is running.
+        addresses, radiotap and decoded results). The raw pcapng is also saved
+        on the device and its path returned in 'pcap_path' (fetch it with
+        fetch_pcap_file). Use list_capture_sessions first if you want to see
+        what is running.
 
         Single-radio caveat: the owner's channel hopping can fail on devices
         where the capture interface shares a radio with the managed wlan0, so
@@ -455,7 +494,9 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                     }
 
             info = await sock.subscribe(target)
-            table, events = await _run_window(sock, duration_s, frame_log)
+            table, events, pcap = await _run_and_save(
+                sock, duration_s, frame_log, info["session_id"], owner=False
+            )
             return _summary(
                 "subscriber",
                 table,
@@ -467,6 +508,7 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                 namespace=info["namespace"],
                 interfaces=info["interfaces"],
                 config=info["config"],
+                **pcap,
             )
         except CaptureError as exc:
             return {"error": str(exc)}

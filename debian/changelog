@@ -1,3 +1,18 @@
+wlanpi-mcp (0.6.5-1) unstable; urgency=medium
+
+  * capture: capture_scan/capture_observe now also save the raw pcapng to the
+    managed capture directory (Settings.PCAP_CAPTURE_DIR) while returning the
+    dissected summary, and report it as 'pcap_path'/'pcap_bytes'. This lets the
+    streaming summary be verified against the frames with fetch_pcap_file. The
+    saved file uses the same naming as the file-capture tools, so it is also
+    listed by list_pcap_files and fetchable by capture_id. Teeing is
+    best-effort, so a storage problem never breaks a capture.
+  * capture: factor the capture directory, filename scheme and path-confinement
+    check into wlanpi_mcp/capture/storage.py, shared by both the streaming tee
+    and the file-capture tools.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0000
+
 wlanpi-mcp (0.6.4-1) unstable; urgency=medium
 
   * capture: clarify the tool descriptions so streaming vs non-streaming

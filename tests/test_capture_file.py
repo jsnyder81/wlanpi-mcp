@@ -21,6 +21,7 @@ from tests.test_capture_tools import (
     session,
     started_event,
 )
+from wlanpi_mcp.capture import storage
 from wlanpi_mcp.capture.ws_client import CaptureSocket
 from wlanpi_mcp.config import Settings
 from wlanpi_mcp.tools import capture_file
@@ -59,6 +60,8 @@ def capdir(monkeypatch, tmp_path):
     """Point the capture dir at tmp_path and let a test install its stub WS."""
     settings = Settings(PCAP_CAPTURE_DIR=str(tmp_path), _env_file=None)
     monkeypatch.setattr(capture_file, "get_settings", lambda: settings)
+    # The dir/filename helpers read settings via the storage module.
+    monkeypatch.setattr(storage, "get_settings", lambda: settings)
 
     def use(stub):
         async def fake_connect(_settings):
