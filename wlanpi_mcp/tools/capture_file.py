@@ -1,8 +1,9 @@
 """
 Non-streaming, file-backed Wi-Fi capture tools.
 
-Where capture_scan/capture_observe run a bounded window and return a dissected
-summary, these run a capture in the *background* — holding the wlanpi-core
+Where the streaming tools capture_scan/capture_observe run a bounded window and
+return a dissected summary, these run a capture in the *background* — holding
+the wlanpi-core
 capture WebSocket open past the tool call — and write the raw pcapng byte
 stream to a file in a managed directory on the device. That lifts the 60 s
 window cap (a returned summary must stay small; a file need not) so a capture
@@ -233,17 +234,20 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         pcap_filter: str = "",
     ) -> dict:
         """
-        Start a background packet capture that writes a pcapng file on the WLAN Pi.
+        Start a background, non-streaming packet capture that writes a pcapng
+        file on the WLAN Pi.
 
-        Unlike capture_scan, this does not block and does not return a dissected
+        This is the non-streaming counterpart to capture_scan: unlike that
+        streaming tool, it does not block and does not return a dissected
         summary. It starts a capture, keeps the core WebSocket open in the
-        background, and streams the raw pcapng bytes to a file under a managed
+        background, and writes the raw pcapng bytes to a file under a managed
         directory on the device. Because nothing is held in memory or returned
-        inline, the capture can run far longer than the 60 s streaming window —
-        up to the server's configured maximum. The call returns immediately with
-        the capture_id and file path; the capture then runs on its own until
-        duration_s elapses or you call stop_pcap_file. Retrieve the file with
-        fetch_pcap_file(capture_id=...) (a pcapng blob) once it has stopped.
+        inline, the capture can run far longer than the 60 s capture_scan
+        window — up to the server's configured maximum. The call returns
+        immediately with the capture_id and file path; the capture then runs on
+        its own until duration_s elapses or you call stop_pcap_file. Retrieve
+        the file with fetch_pcap_file(capture_id=...) (a pcapng blob) once it
+        has stopped.
 
         This tool always owns the interface. If a capture is already running on
         it, this returns an error rather than taking it over — watch that one
@@ -375,8 +379,8 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         session_id: Optional[str] = None,
     ) -> dict:
         """
-        Stop a running file capture started by start_pcap_file, before its
-        duration elapses.
+        Stop a running non-streaming file capture started by start_pcap_file,
+        before its duration elapses.
 
         Signals the background capture to stop, waits for it to flush and close
         its file, and returns the final path, status and size. A capture that
@@ -421,7 +425,8 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
     @mcp.tool()
     async def list_pcap_files() -> dict:
         """
-        List the file-backed captures this server has started, running or done.
+        List the non-streaming, file-backed captures this server has started,
+        running or done.
 
         Each entry gives the capture_id, interface, on-device pcapng path,
         status (running/completed/stopped/error), current size and configured
@@ -440,7 +445,8 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         session_id: Optional[str] = None,
     ):
         """
-        Fetch a captured pcapng file from the WLAN Pi as a binary blob.
+        Fetch a non-streaming capture's pcapng file from the WLAN Pi as a
+        binary blob.
 
         Returns the raw pcapng file (mime application/vnd.tcpdump.pcapng) for the
         capture named by capture_id (preferred) or by an explicit on-device

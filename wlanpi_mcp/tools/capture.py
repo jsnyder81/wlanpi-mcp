@@ -192,12 +192,14 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         max_frames: int = DEFAULT_MAX_FRAMES,
     ) -> dict:
         """
-        Run a live Wi-Fi packet capture and return what was on the air.
+        Run a live streaming Wi-Fi packet capture and return what was on the air.
 
-        This captures real 802.11 frames off the air (unlike scan_wlan, which
-        asks the driver for a scan), so it reports what is actually being
-        transmitted. The call blocks for duration_s seconds and returns a
-        dissected summary — never raw pcap.
+        This is a streaming capture: it captures real 802.11 frames off the air
+        (unlike scan_wlan, which asks the driver for a scan), so it reports what
+        is actually being transmitted. The call blocks for duration_s seconds
+        and returns a dissected summary — never raw pcap. To save a full pcap
+        file instead, use the non-streaming file-capture tools
+        (start_pcap_file/fetch_pcap_file).
 
         The result has two parts:
         - 'aps': one row per BSSID from beacons/probe-responses, with SSID,
@@ -374,14 +376,14 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         max_frames: int = DEFAULT_MAX_FRAMES,
     ) -> dict:
         """
-        Watch a capture that another application is already running, read-only.
+        Watch a streaming capture another application is already running, read-only.
 
-        Use this to see what a capture started elsewhere (the WebUI, a lab
-        controller, another agent) is receiving, without taking control of it.
-        This never starts, reconfigures or stops a capture; the role in the
-        result is always 'subscriber'. The result includes the owner's running
-        config (channels, width, dwell, filter), so it is clear what the
-        summary does and does not cover.
+        Use this streaming subscriber to see what a capture started elsewhere
+        (the WebUI, a lab controller, another agent) is receiving, without
+        taking control of it. This never starts, reconfigures or stops a
+        capture; the role in the result is always 'subscriber'. The result
+        includes the owner's running config (channels, width, dwell, filter),
+        so it is clear what the summary does and does not cover.
 
         Returns the same dissected summary as capture_scan (an 'aps' table with
         full security detail, plus per-frame 'frames'/'frame_types' with
