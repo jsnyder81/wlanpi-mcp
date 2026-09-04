@@ -184,17 +184,84 @@ async def test_stop_ends_a_running_capture_early(capdir):
     tools = _register()
     started = await tools["start_pcap_file"].fn(channels=[6], duration_s=30)
     assert started["status"] == "running"
+    assert started["capture_id"] == "cap_run"
 
-    stopped = await tools["stop_pcap_file"].fn(session_id="cap_run")
+    stopped = await tools["stop_pcap_file"].fn(capture_id="cap_run")
     assert stopped["status"] == "stopped"
-    assert stopped["session_id"] == "cap_run"
+    assert stopped["capture_id"] == "cap_run"
 
 
 async def test_stop_unknown_session_is_an_error(capdir):
     _tmp, _use = capdir
     tools = _register()
-    result = await tools["stop_pcap_file"].fn(session_id="nope")
+    result = await tools["stop_pcap_file"].fn(capture_id="nope")
     assert "no file capture" in result["error"]
+
+
+async def test_bytes_written_advances_while_the_capture_is_running(capdir):
+    _tmp, use = capdir
+    use(
+        BlockingWS(
+            [
+                AUTH_OK,
+                sessions_event(),
+                CONFIG_APPLIED,
+                started_event("cap_prog"),
+                *pcapng_chunks(BEACON_A, BEACON_B),
+            ]
+        )
+    )
+    tools = _register()
+    started = await tools["start_pcap_file"].fn(channels=[6], duration_s=30)
+    assert started["status"] == "running"
+
+    entry = capture_file._CAPTURES["cap_prog"]
+    for _ in range(50):  # let the background task drain the delivered chunks
+        if entry.bytes_written > 0:
+            break
+        await asyncio.sleep(0.02)
+
+    # bytes_written tracks progress mid-capture, not only at completion.
+    assert entry.status == "running"
+    assert entry.bytes_written > 0
+    assert entry.bytes_written == Path(entry.path).stat().st_size
+
+    await tools["stop_pcap_file"].fn(capture_id="cap_prog")
+
+
+async def test_fetch_without_identifier_or_path_is_an_error(capdir):
+    _tmp, _use = capdir
+    tools = _register()
+    result = await tools["fetch_pcap_file"].fn()
+    assert "pass capture_id or path" in result["error"]
+
+
+async def test_fetch_via_real_dispatch_path_resolves_capture_id(capdir):
+    # Go through FastMCP's argument validation + dispatch (tool.run), not .fn —
+    # this is the path a real MCP client hits, where the earlier session_id
+    # collision surfaced.
+    _tmp, use = capdir
+    use(
+        StubWS(
+            [
+                AUTH_OK,
+                sessions_event(),
+                CONFIG_APPLIED,
+                started_event("cap_run_path"),
+                *pcapng_chunks(BEACON_A),
+                CAPTURE_ENDED,
+            ]
+        )
+    )
+    tools = _register()
+    await tools["start_pcap_file"].fn(channels=[6])
+    await _await_capture("cap_run_path")
+
+    by_capture_id = await tools["fetch_pcap_file"].run({"capture_id": "cap_run_path"})
+    by_alias = await tools["fetch_pcap_file"].run({"session_id": "cap_run_path"})
+    for result in (by_capture_id, by_alias):
+        assert isinstance(result, EmbeddedResource)
+        assert result.resource.mimeType == "application/vnd.tcpdump.pcapng"
 
 
 # ── list_pcap_files ──────────────────────────────────────────────────────────
@@ -243,10 +310,14 @@ async def test_fetch_returns_a_pcapng_blob(capdir):
     await tools["start_pcap_file"].fn(channels=[6])
     entry = await _await_capture("cap_fetch")
 
-    fetched = await tools["fetch_pcap_file"].fn(session_id="cap_fetch")
+    fetched = await tools["fetch_pcap_file"].fn(capture_id="cap_fetch")
     assert isinstance(fetched, EmbeddedResource)
     assert fetched.resource.mimeType == "application/vnd.tcpdump.pcapng"
     assert base64.b64decode(fetched.resource.blob) == Path(entry.path).read_bytes()
+    # The deprecated session_id alias still resolves the same capture.
+    via_alias = await tools["fetch_pcap_file"].fn(session_id="cap_fetch")
+    assert isinstance(via_alias, EmbeddedResource)
+    assert via_alias.resource.blob == fetched.resource.blob
 
 
 async def test_fetch_unknown_session_is_an_error(capdir):
@@ -294,7 +365,7 @@ async def test_fetch_by_session_id_falls_back_to_disk_after_registry_loss(capdir
 
     # Simulate a server restart: the in-memory registry is gone, file remains.
     capture_file._CAPTURES.clear()
-    fetched = await tools["fetch_pcap_file"].fn(session_id="cap_disk")
+    fetched = await tools["fetch_pcap_file"].fn(capture_id="cap_disk")
     assert isinstance(fetched, EmbeddedResource)
     assert base64.b64decode(fetched.resource.blob) == expected
 
@@ -321,4 +392,4 @@ async def test_list_includes_on_disk_files_after_registry_loss(capdir):
     assert listing["count"] == 1
     record = listing["captures"][0]
     assert record["status"] == "on_disk"
-    assert record["session_id"] == "cap_orphan"
+    assert record["capture_id"] == "cap_orphan"

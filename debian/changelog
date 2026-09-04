@@ -1,3 +1,17 @@
+wlanpi-mcp (0.6.2-1) unstable; urgency=medium
+
+  * capture: fetch_pcap_file/stop_pcap_file now take 'capture_id' instead of
+    'session_id'. The old name collided with the MCP SSE transport's reserved
+    routing query param (POST /messages/?session_id=...), and some clients drop
+    a tool argument sharing that name before it reaches the server - so a fetch
+    by session_id failed with "pass session_id or path" while fetch by path
+    worked. 'session_id' is kept as a back-compat alias; every result now
+    carries 'capture_id'.
+  * capture: bytes_written now advances while a file capture is running,
+    instead of staying 0 until completion, so it is usable for progress.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0000
+
 wlanpi-mcp (0.6.1-1) unstable; urgency=medium
 
   * capture: make file-backed captures resolvable by session_id from disk, not

@@ -72,6 +72,11 @@ class FileCapture:
 
     def to_result(self) -> dict:
         out = {
+            # capture_id is the handle callers pass back to fetch/stop. It is
+            # core's session id, but not named 'session_id' on purpose: that
+            # name collides with the MCP SSE transport's reserved routing query
+            # param and some clients drop a tool arg that shares it.
+            "capture_id": self.session_id,
             "session_id": self.session_id,
             "interface": self.interface,
             "path": self.path,
@@ -163,9 +168,11 @@ def _disk_captures() -> List[dict]:
         resolved = os.path.realpath(path)
         if resolved in known:
             continue
+        cid = _session_from_filename(os.path.basename(resolved))
         out.append(
             {
-                "session_id": _session_from_filename(os.path.basename(resolved)),
+                "capture_id": cid,
+                "session_id": cid,
                 "path": resolved,
                 "status": "on_disk",
                 "size_bytes": _safe_size(resolved),
@@ -180,11 +187,15 @@ async def _run_file_capture(
     fileobj: Any,
 ) -> None:
     """Own the socket and file for the capture's life, then always clean up."""
+
+    def sink(data: bytes) -> None:
+        # Count as we write so bytes_written tracks progress live, not only at
+        # completion (the file is unbuffered, so size_bytes advances too).
+        entry.bytes_written += len(data)
+        fileobj.write(data)
+
     try:
-        events = await sock.consume_raw(
-            fileobj.write, entry.duration_s, entry.stop_event
-        )
-        entry.bytes_written = events.get("bytes_written", 0)
+        events = await sock.consume_raw(sink, entry.duration_s, entry.stop_event)
         entry.channel_issues = events.get("channel_issues", [])
         # stop_event set means we were asked to stop early.
         entry.status = "stopped" if entry.stop_event.is_set() else "completed"
@@ -230,9 +241,9 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         directory on the device. Because nothing is held in memory or returned
         inline, the capture can run far longer than the 60 s streaming window —
         up to the server's configured maximum. The call returns immediately with
-        the session_id and file path; the capture then runs on its own until
+        the capture_id and file path; the capture then runs on its own until
         duration_s elapses or you call stop_pcap_file. Retrieve the file with
-        fetch_pcap_file (a pcapng blob) once it has stopped.
+        fetch_pcap_file(capture_id=...) (a pcapng blob) once it has stopped.
 
         This tool always owns the interface. If a capture is already running on
         it, this returns an error rather than taking it over — watch that one
@@ -335,7 +346,7 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
             result = entry.to_result()
             result["message"] = (
                 f"capturing to {path} for up to {duration_s}s; fetch it with "
-                "fetch_pcap_file once stopped"
+                f"fetch_pcap_file(capture_id='{session_id}') once stopped"
             )
             return result
         except CaptureError as exc:
@@ -359,7 +370,10 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
                 await sock.close()
 
     @mcp.tool()
-    async def stop_pcap_file(session_id: str) -> dict:
+    async def stop_pcap_file(
+        capture_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> dict:
         """
         Stop a running file capture started by start_pcap_file, before its
         duration elapses.
@@ -370,22 +384,26 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         fetch_pcap_file.
 
         Args:
-            session_id: The session_id returned by start_pcap_file (also shown
+            capture_id: The capture_id returned by start_pcap_file (also shown
                 by list_pcap_files).
+            session_id: Deprecated alias for capture_id.
         """
-        entry = _CAPTURES.get(session_id)
+        cid = capture_id or session_id
+        if not cid:
+            return {"error": "pass capture_id"}
+        entry = _CAPTURES.get(cid)
         if entry is None:
-            if _resolve_session_path(session_id) is not None:
+            if _resolve_session_path(cid) is not None:
                 return {
                     "error": (
-                        f"session '{session_id}' is not a live capture in this "
-                        "server (it likely ended when the server restarted). Its "
-                        "file is still available via fetch_pcap_file."
+                        f"capture '{cid}' is not a live capture in this server "
+                        "(it likely ended when the server restarted). Its file "
+                        "is still available via fetch_pcap_file."
                     )
                 }
             return {
                 "error": (
-                    f"no file capture with session_id '{session_id}'. See "
+                    f"no file capture with capture_id '{cid}'. See "
                     "list_pcap_files for the ones this server knows."
                 )
             }
@@ -405,7 +423,7 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         """
         List the file-backed captures this server has started, running or done.
 
-        Each entry gives the session_id, interface, on-device pcapng path,
+        Each entry gives the capture_id, interface, on-device pcapng path,
         status (running/completed/stopped/error), current size and configured
         duration. Use stop_pcap_file to end a running one and fetch_pcap_file to
         retrieve the file. Files left on disk from an earlier server run are
@@ -417,14 +435,15 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
 
     @mcp.tool()
     async def fetch_pcap_file(
-        session_id: Optional[str] = None,
+        capture_id: Optional[str] = None,
         path: Optional[str] = None,
+        session_id: Optional[str] = None,
     ):
         """
         Fetch a captured pcapng file from the WLAN Pi as a binary blob.
 
         Returns the raw pcapng file (mime application/vnd.tcpdump.pcapng) for the
-        capture named by session_id (preferred) or by an explicit on-device
+        capture named by capture_id (preferred) or by an explicit on-device
         path. Open it in Wireshark/tshark for analysis. Fetch after the capture
         has stopped for a complete file; fetching a still-running capture
         returns only the bytes written so far.
@@ -433,22 +452,31 @@ def register(mcp: FastMCP, client: CoreClient) -> None:
         directory; any other path is refused.
 
         Args:
-            session_id: The session_id from start_pcap_file/list_pcap_files.
+            capture_id: The capture_id from start_pcap_file/list_pcap_files.
             path: Alternatively, the on-device file path (must be inside the
                 managed capture directory).
+            session_id: Deprecated alias for capture_id.
         """
-        if session_id:
-            resolved_path = _resolve_session_path(session_id)
+        cid = capture_id or session_id
+        if cid:
+            resolved_path = _resolve_session_path(cid)
             if resolved_path is None:
                 return {
                     "error": (
-                        f"no capture file for session_id '{session_id}'. See "
+                        f"no capture file for capture_id '{cid}'. See "
                         "list_pcap_files."
                     )
                 }
             path = resolved_path
         elif not path:
-            return {"error": "pass session_id or path"}
+            log.info(
+                "fetch_pcap_file called without an identifier "
+                "(capture_id=%r session_id=%r path=%r)",
+                capture_id,
+                session_id,
+                path,
+            )
+            return {"error": "pass capture_id or path"}
 
         if not _within_capture_dir(path):
             return {
