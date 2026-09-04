@@ -349,6 +349,73 @@ class CaptureSocket:
             "stream_closed": stream_closed,
         }
 
+    async def consume_raw(
+        self,
+        sink: Any,
+        duration_s: float,
+        stop_event: Optional["asyncio.Event"] = None,
+    ) -> dict:
+        """
+        Stream raw pcapng bytes to ``sink`` for up to ``duration_s`` seconds.
+
+        Unlike :meth:`consume`, this does not dissect: every binary chunk is
+        written verbatim, so the accumulated bytes are a valid pcapng file.
+        ``sink`` is any callable taking ``bytes`` (e.g. a binary file's
+        ``write``). Returns early when the capture ends (owner stopped, dumpcap
+        exited) or ``stop_event`` is set. Text events are still recorded, so
+        ``channel_issues`` stays populated. The loop wakes at least once a
+        second so an early stop is honoured even when no frames are arriving.
+        """
+        deadline = time.monotonic() + duration_s
+        bytes_written = 0
+
+        for chunk in self._pending_binary:
+            sink(chunk)
+            bytes_written += len(chunk)
+        self._pending_binary.clear()
+
+        stream_closed = False
+        while not self._ended:
+            if stop_event is not None and stop_event.is_set():
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                msg = await asyncio.wait_for(
+                    self._ws.recv(), timeout=min(remaining, 1.0)
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                # Wake to re-check the deadline and stop_event; not the end.
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # The stream ending is normal (owner stopped, socket closed);
+                # return what was written rather than failing.
+                log.debug("Capture stream ended: %r", exc)
+                stream_closed = True
+                break
+            if isinstance(msg, (bytes, bytearray, memoryview)):
+                data = bytes(msg)
+                sink(data)
+                bytes_written += len(data)
+            elif isinstance(msg, str):
+                try:
+                    event = json.loads(msg)
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(event, dict):
+                    self._record_event(event)
+
+        return {
+            "channel_issues": list(self.channel_issues),
+            "channel_sets": self.channel_sets,
+            "bytes_written": bytes_written,
+            "capture_ended": self._ended,
+            "stream_closed": stream_closed,
+        }
+
     @staticmethod
     def _absorb(
         chunk: bytes,

@@ -1,3 +1,21 @@
+wlanpi-mcp (0.6.0-1) unstable; urgency=medium
+
+  * capture: add a file-backed capture family alongside the streaming tools.
+    start_pcap_file starts a capture, hands the owning WebSocket to a
+    background task that writes the raw pcapng byte stream to a managed
+    directory on the device, and returns immediately with the session_id and
+    path - so a capture can run well past the 60 s streaming window.
+    stop_pcap_file ends one early, list_pcap_files shows what is running or
+    done, and fetch_pcap_file returns the file to the client as an MCP blob
+    (application/vnd.tcpdump.pcapng) for analysis in Wireshark/tshark.
+  * capture: this deliberately relaxes two invariants (raw pcap, and a local
+    file) scoped to Settings.PCAP_CAPTURE_DIR (default /tmp/wlanpi-mcp/
+    captures); fetch_pcap_file refuses any path outside it. Every byte still
+    comes from the core capture WebSocket - no subprocess, same JWT. Adds
+    PCAP_CAPTURE_DIR and PCAP_MAX_DURATION_S (default 3600 s) settings.
+
+ -- Jake Snyder <jsnyder81@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0000
+
 wlanpi-mcp (0.5.1-1) unstable; urgency=medium
 
   * capture: dissect the QBSS/BSS Load element (IE tag 11) from beacons and

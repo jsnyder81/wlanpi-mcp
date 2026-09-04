@@ -15,6 +15,7 @@ from wlanpi_mcp.tools import (
     advanced,
     bluetooth,
     capture,
+    capture_file,
     netconfig,
     network,
     profiler,
@@ -26,7 +27,9 @@ from wlanpi_mcp.tools import (
 )
 
 
-def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -> FastMCP:
+def create_server(
+    client: CoreClient, host: str = "0.0.0.0", port: int = 8766
+) -> FastMCP:
     mcp = FastMCP(
         "WLAN Pi",
         instructions=(
@@ -56,6 +59,8 @@ def create_server(client: CoreClient, host: str = "0.0.0.0", port: int = 8766) -
 
     # Packet capture — wlanpi-core's streaming WebSocket, not REST
     capture.register(mcp, client)
+    # File-backed capture: background pcapng to /tmp, fetched as a blob
+    capture_file.register(mcp, client)
 
     # Resources — Phase 1
     device.register(mcp, client)

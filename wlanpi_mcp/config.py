@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # 8766: avoid colliding with the wlanpi-fpms2 state service on 8765
     WLANPI_MCP_PORT: int = 8766
     LOG_LEVEL: str = "INFO"
+    # File-backed capture (start_pcap_file/fetch_pcap_file). Raw pcapng files
+    # are written here and fetch refuses any path outside this directory.
+    PCAP_CAPTURE_DIR: str = "/tmp/wlanpi-mcp/captures"
+    # Ceiling on a single file capture's duration, in seconds.
+    PCAP_MAX_DURATION_S: int = 3600
 
     model_config = SettingsConfigDict(
         env_file="/etc/wlanpi-mcp/config.env",
